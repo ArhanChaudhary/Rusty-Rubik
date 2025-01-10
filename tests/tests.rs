@@ -64,7 +64,6 @@ mod tests {
 
     // PRUNING TABLE TESTS
     #[test]
-    #[ignore]
     fn pruning_table_of_solved_is_zero() {
         let tables = PruningTables::default_tables();
         assert_eq!(tables.eo[0], 0);
@@ -73,7 +72,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn one_move_pruning_top() {
         let tables = PruningTables::default_tables();
         let solved = CubeState::default();
@@ -86,7 +84,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn one_move_pruning_front() {
         let tables = PruningTables::default_tables();
         let solved = CubeState::default();
@@ -99,7 +96,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn u_perm_optimal() {
         let tables = PruningTables::default_tables();
         let scramble = MoveSequence(parse_scramble("R U' R U R U R U' R' U' R2").unwrap());

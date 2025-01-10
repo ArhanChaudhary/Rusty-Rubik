@@ -5,7 +5,6 @@ use strum_macros::EnumIter;
 
 use colored::Colorize;
 use lazy_static::lazy_static;
-use pyo3::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::ops::{Add, Rem};
 
@@ -40,15 +39,10 @@ pub trait Puzzle {
 }
 
 #[derive(Clone)]
-#[pyclass]
 pub struct Cube3 {
-    #[pyo3(get)]
     pub cp: [u8; 8],
-    #[pyo3(get)]
     pub co: [u8; 8],
-    #[pyo3(get)]
     pub ep: [u8; 12],
-    #[pyo3(get)]
     pub eo: [u8; 12],
 }
 
@@ -105,21 +99,15 @@ pub enum CubeAxis {
 // rotations?
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-#[pyclass]
 pub struct CubeMove {
-    #[pyo3(get, set)]
     pub axis: u8,
-    #[pyo3(get, set)]
     pub depth: u8,
-    #[pyo3(get, set)]
     pub rotation: u8,
 }
 
 impl PuzzleMove for CubeMove {}
 
-#[pymethods]
 impl CubeMove {
-    #[new]
     fn new(axis: u8, depth: u8, rotation: u8) -> Self {
         CubeMove {
             axis,
@@ -133,9 +121,9 @@ impl Default for Cube3 {
     fn default() -> Self {
         Self {
             cp: [0, 1, 2, 3, 4, 5, 6, 7],
-            co: [0 as u8; 8],
+            co: [0_u8; 8],
             ep: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-            eo: [0 as u8; 12],
+            eo: [0_u8; 12],
         }
     }
 }
@@ -147,7 +135,7 @@ pub fn apply_permutation<T: Clone + Copy, const N: usize>(
     delta: &[usize; N],
     count: u8,
 ) -> [T; N] {
-    let mut new_array = og_state.clone();
+    let mut new_array = og_state;
     for _ in 0..count {
         for i in 0..N {
             new_array[delta[i]] = og_state[i];
@@ -162,7 +150,7 @@ pub fn apply_orientation<T: Clone + Copy + Add<Output = T> + Rem<Output = T>, co
     num_orientations: T,
     count: u8,
 ) -> [T; N] {
-    let mut new_array = og_state.clone();
+    let mut new_array = og_state;
     for _ in 0..count {
         for i in 0..N {
             new_array[i] = (og_state[i] + delta[i]) % num_orientations;
@@ -211,14 +199,11 @@ impl Puzzle for Cube3 {
     }
 }
 
-#[pymethods]
 impl Cube3 {
-    #[new]
     fn new() -> Self {
         Puzzle::new()
     }
 
-    #[staticmethod]
     fn get_all_moves() -> HashSet<<Self as Puzzle>::M> {
         HashSet::<CubeMove>::new()
     }
@@ -235,10 +220,10 @@ impl Cube3 {
     //     self
     // }
 
-    fn make_move(&self, m: &PyAny) -> Self {
-        if let Ok(x) = m.extract::<String>() {}
-        self.clone()
-    }
+    // fn make_move(&self, m: &PyAny) -> Self {
+    //     if let Ok(x) = m.extract::<String>() {}
+    //     self.clone()
+    // }
 }
 
 // I want:

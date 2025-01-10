@@ -52,7 +52,7 @@ impl Solver for AStarSolver {
         // TODO: need to compress cube state
         queue.push(self.get_start_state().clone(), 0);
         g_scores.insert(self.get_start_state().clone(), 0);
-        while queue.len() > 0 {
+        while !queue.is_empty() {
             if let Some((current, priority)) = queue.pop() {
                 if current == CubeState::default() {
                     // we found the solved state!
@@ -66,12 +66,12 @@ impl Solver for AStarSolver {
                 for m in ALL_MOVES.iter() {
                     let new_state = current.apply_move_instance(m);
                     let new_g_score = priority - 1;
-                    let neighbor_g_score = g_scores.get(&new_state).unwrap_or(&std::i32::MIN);
+                    let neighbor_g_score = g_scores.get(&new_state).unwrap_or(&i32::MIN);
                     if new_g_score > *neighbor_g_score {
                         come_from.insert(new_state.clone(), (current.clone(), *m));
                         g_scores.insert(new_state.clone(), new_g_score);
                     }
-                    if let None = queue.get(&new_state) {
+                    if queue.get(&new_state).is_none() {
                         queue.push(new_state, priority - 1);
                     } else if let Some((_, p)) = queue.get(&new_state) {
                         if *p < priority - 1 {
@@ -86,7 +86,7 @@ impl Solver for AStarSolver {
         let mut path = vec![];
         while curr != self.get_start_state().clone() {
             if let Some((c, m)) = come_from.get(&curr) {
-                path.push(m.clone());
+                path.push(*m);
                 curr = c.clone();
             }
         }
@@ -122,12 +122,12 @@ impl<'a> IDASolver<'a> {
 
     fn search_for_solution(
         &self,
-        mut curr_path: &mut MoveSequence,
+        curr_path: &mut MoveSequence,
         last_state: &CubeState,
         g: u8,
         bound: u8,
     ) -> SearchResult {
-        let last_h = self.pruning_tables.compute_h_value(&last_state);
+        let last_h = self.pruning_tables.compute_h_value(last_state);
         let f = g + last_h;
         if f > bound {
             SearchResult::NewBound(f)
@@ -135,13 +135,13 @@ impl<'a> IDASolver<'a> {
             // yay it's solved!
             SearchResult::Found
         } else {
-            let mut min = std::u8::MAX;
-            let allowed_moves = allowed_moves_after_seq(&curr_path);
+            let mut min = u8::MAX;
+            let allowed_moves = allowed_moves_after_seq(curr_path);
             for m in ALL_MOVES
                 .iter()
                 .filter(|mo| ((1 << get_basemove_pos(mo.basemove)) & allowed_moves) == 0)
             {
-                if curr_path.get_moves().len() > 0 {
+                if !curr_path.get_moves().is_empty() {
                     let path = curr_path.get_moves_mut();
                     let last_move = path[path.len() - 1];
                     if last_move.basemove == m.basemove {
@@ -150,7 +150,7 @@ impl<'a> IDASolver<'a> {
                 }
                 curr_path.get_moves_mut().push(*m);
                 let next_state = last_state.apply_move_instance(m);
-                let t = self.search_for_solution(&mut curr_path, &next_state, g + 1, bound);
+                let t = self.search_for_solution(curr_path, &next_state, g + 1, bound);
                 match t {
                     SearchResult::Found => return SearchResult::Found,
                     SearchResult::NewBound(b) => {
@@ -173,11 +173,11 @@ impl Solver for IDASolver<'_> {
         let start_state = self.get_start_state();
 
         // initial lower bound on number of moves needed to solve start state
-        let mut bound = self.pruning_tables.compute_h_value(&start_state);
+        let mut bound = self.pruning_tables.compute_h_value(start_state);
         let mut path: MoveSequence = MoveSequence(vec![]);
         loop {
             println!("Searching depth {}...", bound);
-            match self.search_for_solution(&mut path, &start_state, 0, bound) {
+            match self.search_for_solution(&mut path, start_state, 0, bound) {
                 SearchResult::Found => {
                     break;
                 }

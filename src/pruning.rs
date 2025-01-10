@@ -45,7 +45,7 @@ impl PruningTables {
     /// Computes a lower bound on the number of moves needed to
     /// solve the given state, based on the pruning table values.
     pub fn compute_h_value(&self, state: &CubeState) -> u8 {
-        let (corners, eo, ep) = get_index_of_state(&state);
+        let (corners, eo, ep) = get_index_of_state(state);
         std::cmp::max(
             self.corners[corners as usize],
             std::cmp::max(self.eo[eo as usize], self.ep[ep as usize]),
@@ -57,7 +57,7 @@ impl PruningTables {
 fn iddfs(
     starting_state: &CubeState,
     depth: u8,
-    mut bv: &mut [u8],
+    bv: &mut [u8],
     prop_func: &dyn Fn(&CubeState) -> usize,
     tag: String,
 ) {
@@ -66,49 +66,49 @@ fn iddfs(
     }
     for d in 1..depth {
         println!("Building {} pruning table for depth {}...", tag, d);
-        iddfs_search(&starting_state, d, d, &mut bv, 0, &prop_func);
+        iddfs_search(starting_state, d, d, bv, 0, &prop_func);
     }
 }
 
-fn fill_pruning_table(
-    original_depth: u8,
-    mut bv: &mut [u8],
-    allowed_moves: u8,
-    prop_func: &dyn Fn(&CubeState) -> usize,
-    inv_prop_func: &dyn Fn(usize) -> CubeState,
-) {
-    for d in 0..original_depth {
-        if d == 0 {
-            // in this case all entries are zero, so manually take the solved state
-        }
-        for i in 0..bv.len() {
-            if (original_depth == 1 && i == 0) || bv[i] == original_depth - 1 {
-                let new_cube_state = inv_prop_func(i);
-                for m in ALL_MOVES
-                    .iter()
-                    .filter(|mo| (1 << get_basemove_pos(mo.basemove)) & allowed_moves == 0)
-                {
-                    let new_state = state.apply_move_instance(m);
-                    let index = prop_func(&new_state);
-                    if index > 0
-                        && bv[index] != 0
-                        && bv[index] != 0
-                        && bv[index] < original_depth - 1
-                    {
-                        continue;
-                    }
-                }
-            }
-        }
-    }
-}
+// fn fill_pruning_table(
+//     original_depth: u8,
+//     mut bv: &mut [u8],
+//     allowed_moves: u8,
+//     prop_func: &dyn Fn(&CubeState) -> usize,
+//     inv_prop_func: &dyn Fn(usize) -> CubeState,
+// ) {
+//     for d in 0..original_depth {
+//         if d == 0 {
+//             // in this case all entries are zero, so manually take the solved state
+//         }
+//         for i in 0..bv.len() {
+//             if (original_depth == 1 && i == 0) || bv[i] == original_depth - 1 {
+//                 let new_cube_state = inv_prop_func(i);
+//                 for m in ALL_MOVES
+//                     .iter()
+//                     .filter(|mo| (1 << get_basemove_pos(mo.basemove)) & allowed_moves == 0)
+//                 {
+//                     let new_state = state.apply_move_instance(m);
+//                     let index = prop_func(&new_state);
+//                     if index > 0
+//                         && bv[index] != 0
+//                         && bv[index] != 0
+//                         && bv[index] < original_depth - 1
+//                     {
+//                         continue;
+//                     }
+//                 }
+//             }
+//         }
+//     }
+// }
 
 /// Starts a depth-bounded DFS from the given state.
 fn iddfs_search(
     state: &CubeState,
     original_depth: u8,
     d: u8,
-    mut bv: &mut [u8],
+    bv: &mut [u8],
     allowed_moves: u8,
     prop_func: &dyn Fn(&CubeState) -> usize,
 ) {
@@ -133,7 +133,7 @@ fn iddfs_search(
                 &new_state,
                 original_depth,
                 d - 1,
-                &mut bv,
+                bv,
                 new_allowed_moves,
                 &prop_func,
             );
@@ -143,13 +143,13 @@ fn iddfs_search(
 
 fn write_table(table: &[u8], filename: String) {
     let mut file = std::fs::File::create(filename).expect("Unable to create file.");
-    file.write(table).expect("Unable to write to file.");
+    file.write_all(table).expect("Unable to write to file.");
 }
 
 /// Generates a pruning table for the corners of a Rubik's Cube.
 pub fn generate_pruning_table_corners(filename: String) -> bool {
     let solved = CubeState::default();
-    let mut table = vec![0 as u8; 88179840];
+    let mut table = vec![0_u8; 88179840];
     iddfs(
         &solved,
         9,
@@ -160,42 +160,42 @@ pub fn generate_pruning_table_corners(filename: String) -> bool {
         },
         String::from("corners"),
     );
-    write_table(&*table, filename);
+    write_table(&table, filename);
     true
 }
 
 /// Generates a pruning table for the edge orientation of a Rubik's Cube.
 pub fn generate_pruning_table_eo(filename: String) -> bool {
     let solved = CubeState::default();
-    let mut table = vec![0 as u8; 2048];
+    let mut table = vec![0_u8; 2048];
     iddfs(
         &solved,
         8,
         &mut table,
         &|state| {
-            let (_, index, _) = get_index_of_state(&state);
+            let (_, index, _) = get_index_of_state(state);
             index as usize
         },
         String::from("EO"),
     );
-    write_table(&*table, filename);
+    write_table(&table, filename);
     true
 }
 
 /// Generates a pruning table for the edge permutation of a Rubik's Cube.
 pub fn generate_pruning_table_ep(filename: String) -> bool {
     let solved = CubeState::default();
-    let mut table = vec![0 as u8; 479001600];
+    let mut table = vec![0_u8; 479001600];
     iddfs(
         &solved,
         9,
         &mut table,
         &|state| {
-            let (_, _, index) = get_index_of_state(&state);
+            let (_, _, index) = get_index_of_state(state);
             index as usize
         },
         String::from("EP"),
     );
-    write_table(&*table, filename);
+    write_table(&table, filename);
     true
 }

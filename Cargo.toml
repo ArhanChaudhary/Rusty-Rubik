@@ -1,19 +1,14 @@
 [package]
 name = "rusty-rubik"
-version = "0.1.2"
-description = "A crate providing interaction and solvers for the Rubik's Cube."
-repository = "https://github.com/esqu1/Rusty-Rubik"
-authors = ["Brandon Lin <brandbest1@gmail.com>"]
-edition = "2018"
+version = "0.1.0"
+description = "An experimental modification of Rusty-Rubik for use in qter."
+repository = "https://github.com/ArhanChaudhary/Rusty-Rubik"
+authors = ["Brandon Lin <brandbest1@gmail.com>", "Arhan Chaudhary <arhan.ch@gmail.com>"]
+edition = "2021"
 license-file = "LICENSE.md"
 readme = "README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[lib]
-name = "rusty_rubik"
-crate-type = ["cdylib"]
-
 
 [dependencies]
 regex = "1.3.9"
@@ -27,7 +22,3 @@ num = "0.4.0"
 num-derive = "0.3"
 num-traits = "0.2"
 lazy_static = "1.4.0"
-
-[dependencies.pyo3]
-version = "0.15.1"
-features = ["extension-module"]

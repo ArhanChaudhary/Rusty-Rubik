@@ -47,9 +47,9 @@ pub fn parse_scramble(scramble: &str) -> Result<Vec<MoveInstance>, strum::ParseE
             break 'tokens;
         }
     }
-    if parse_error.len() > 0 {
-        Err(strum::ParseError::VariantNotFound)
-    } else {
+    if parse_error.is_empty() {
         Ok(parsed)
+    } else {
+        Err(strum::ParseError::VariantNotFound)
     }
 }

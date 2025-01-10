@@ -124,18 +124,16 @@ impl std::fmt::Display for MoveSequence {
 /// use rusty_rubik::cube::*;
 /// use rusty_rubik::cube_move;
 ///
-/// fn main() {
-///     let a = MoveSequence(vec![
-///         cube_move!(R, Normal),
-///         cube_move!(U, Prime),
-///         cube_move!(R, Prime),
-///     ]);
-///     let b = MoveSequence(vec![cube_move!(D, Normal)]);
+/// let a = MoveSequence(vec![
+///     cube_move!(R, Normal),
+///     cube_move!(U, Prime),
+///     cube_move!(R, Prime),
+/// ]);
+/// let b = MoveSequence(vec![cube_move!(D, Normal)]);
 ///
-///     // commutator representing [R U' R', D] = R U' R' D R U R' D'
-///     let comm = Commutator(a,b);
-///     
-/// }
+/// // commutator representing [R U' R', D] = R U' R' D R U R' D'
+/// let comm = Commutator(a,b);
+///
 /// ```
 pub struct Commutator(pub MoveSequence, pub MoveSequence);
 
@@ -150,23 +148,20 @@ pub struct Commutator(pub MoveSequence, pub MoveSequence);
 /// use rusty_rubik::cube::*;
 /// use rusty_rubik::cube_move;
 ///
-/// fn main() {
-///     let c = MoveSequence(vec![
-///         cube_move!(R, Normal),
-///     ]);
-///     let a = MoveSequence(vec![
-///         cube_move!(R, Normal),
-///         cube_move!(D, Normal),
-///         cube_move!(R, Prime),
-///     ]);
-///     let b = MoveSequence(vec![
-///         cube_move!(U, Double),
-///     ]);
+/// let c = MoveSequence(vec![
+///     cube_move!(R, Normal),
+/// ]);
+/// let a = MoveSequence(vec![
+///     cube_move!(R, Normal),
+///     cube_move!(D, Normal),
+///     cube_move!(R, Prime),
+/// ]);
+/// let b = MoveSequence(vec![
+///     cube_move!(U, Double),
+/// ]);
 ///
-///     // conjugate representing [R: [R D R', U2]] = R2 D R' U2 R D' R' U2 R'
-///     let comm = Commutator(a,b);
-///     
-/// }
+/// // conjugate representing [R: [R D R', U2]] = R2 D R' U2 R D' R' U2 R'
+/// let comm = Commutator(a,b);
 /// ```
 pub struct Conjugate(pub MoveSequence, pub Commutator);
 
@@ -189,10 +184,8 @@ struct Move {
 /// use rusty_rubik::cube::*;
 /// use rusty_rubik::cube_move;
 ///
-/// fn main() {
-///     let r_prime: MoveInstance = cube_move!(R, Prime);
-///     let u2: MoveInstance = cube_move!(U, Double);
-/// }
+/// let r_prime: MoveInstance = cube_move!(R, Prime);
+/// let u2: MoveInstance = cube_move!(U, Double);
 /// ```
 #[macro_export]
 macro_rules! cube_move {
@@ -313,9 +306,9 @@ impl Default for CubeState {
     fn default() -> CubeState {
         CubeState {
             cp: [0, 1, 2, 3, 4, 5, 6, 7],
-            co: [0 as i8; 8],
+            co: [0_i8; 8],
             ep: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-            eo: [0 as i8; 12],
+            eo: [0_i8; 12],
         }
     }
 }
@@ -354,7 +347,7 @@ fn get_index_of_permutation(perm: &[u8]) -> u32 {
         }
         fin += res * factorial((perm.len() - i - 1) as u32);
     }
-    fin as u32
+    fin
 }
 
 // range:
@@ -418,7 +411,7 @@ impl CubeState {
         moves
             .get_moves()
             .iter()
-            .fold(self.clone(), |acc, mov| acc.apply_move_instance(&mov))
+            .fold(self.clone(), |acc, mov| acc.apply_move_instance(mov))
     }
 
     // pub fn random() -> Self {
