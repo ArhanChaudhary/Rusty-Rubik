@@ -3,10 +3,10 @@ use num_traits::FromPrimitive;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
-use colored::Colorize;
-use lazy_static::lazy_static;
 use std::collections::{HashMap, HashSet};
+use std::hash::Hash;
 use std::ops::{Add, Rem};
+use std::sync::LazyLock;
 
 /**
 pub struct CubeState {
@@ -195,43 +195,10 @@ impl Puzzle for Cube3 {
     }
 
     fn make_move_mut(&mut self, m: CubeMove) -> &Self {
+        *self = self.make_move(m);
         self
     }
 }
-
-impl Cube3 {
-    fn new() -> Self {
-        Puzzle::new()
-    }
-
-    fn get_all_moves() -> HashSet<<Self as Puzzle>::M> {
-        HashSet::<CubeMove>::new()
-    }
-
-    fn pretty_print(&self) {
-        println!("{}", "Hello world!".blue());
-    }
-
-    // fn make_move(&self, m: CubeMove) -> Self {
-    //     Puzzle::make_move(&self, m)
-    // }
-
-    // fn make_move(&self, m: &str) -> Self {
-    //     self
-    // }
-
-    // fn make_move(&self, m: &PyAny) -> Self {
-    //     if let Ok(x) = m.extract::<String>() {}
-    //     self.clone()
-    // }
-}
-
-// I want:
-// let cube = RubiksCube::new();
-// cube.make_move_mut("R");
-//
-// in python:
-// cube = Cube3("U D")
 
 macro_rules! hashmap {
     ($cnt:ty,$($key:expr => $value:expr),+ ,) => {
@@ -245,8 +212,8 @@ macro_rules! hashmap {
     };
 }
 
-lazy_static! {
-    static ref CP_DELTAS: HashMap<CubeAxis, [usize; 8]> = hashmap! {
+static CP_DELTAS: LazyLock<HashMap<CubeAxis, [usize; 8]>> = LazyLock::new(|| {
+    hashmap! {
         [usize; 8],
         CubeAxis::U => [1, 2, 3, 0, 4, 5, 6, 7],
         CubeAxis::D => [0, 1, 2, 3, 5, 6, 7, 4],
@@ -254,8 +221,11 @@ lazy_static! {
         CubeAxis::L => [3, 1, 2, 4, 7, 5, 6, 0],
         CubeAxis::F => [0, 1, 5, 2, 3, 4, 6, 7],
         CubeAxis::B => [7, 0, 2, 3, 4, 5, 1, 6],
-    };
-    static ref CO_DELTAS: HashMap<CubeAxis, [u8; 8]> = hashmap! {
+    }
+});
+
+static CO_DELTAS: LazyLock<HashMap<CubeAxis, [u8; 8]>> = LazyLock::new(|| {
+    hashmap! {
         [u8; 8],
         CubeAxis::U => [0, 0, 0, 0, 0, 0, 0, 0],
         CubeAxis::D => [0, 0, 0, 0, 0, 0, 0, 0],
@@ -263,8 +233,11 @@ lazy_static! {
         CubeAxis::L => [1, 0, 0, 2, 1, 0, 0, 2],
         CubeAxis::F =>[0, 0, 2, 1, 2, 1, 0, 0],
         CubeAxis::B => [2, 1, 0, 0, 0, 0, 2, 1],
-    };
-    static ref EP_DELTAS: HashMap<CubeAxis, [usize; 12]> = hashmap! {
+    }
+});
+
+static EP_DELTAS: LazyLock<HashMap<CubeAxis, [usize; 12]>> = LazyLock::new(|| {
+    hashmap! {
         [usize; 12],
         CubeAxis::U =>[1, 2, 3, 0, 4, 5, 6, 7, 8, 9, 10, 11],
         CubeAxis::D =>[0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 8],
@@ -272,8 +245,11 @@ lazy_static! {
         CubeAxis::L =>[0, 1, 2, 7, 3, 5, 6, 11, 8, 9, 10, 4],
         CubeAxis::F =>[0, 1, 6, 3, 4, 5, 8, 2, 7, 9, 10, 11],
         CubeAxis::B =>[4, 1, 2, 3, 10, 0, 6, 7, 8, 9, 5, 11],
-    };
-    static ref EO_DELTAS: HashMap<CubeAxis, [u8; 12]> = hashmap! {
+    }
+});
+
+static EO_DELTAS: LazyLock<HashMap<CubeAxis, [u8; 12]>> = LazyLock::new(|| {
+    hashmap! {
         [u8; 12],
         CubeAxis::U =>[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         CubeAxis::D =>[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -281,5 +257,5 @@ lazy_static! {
         CubeAxis::L =>[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         CubeAxis::F =>[0, 0, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0],
         CubeAxis::B =>[1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0],
-    };
-}
+    }
+});

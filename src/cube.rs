@@ -102,6 +102,33 @@ impl MoveSequence {
         }
         MoveSequence(moves)
     }
+
+    /// Determines which moves are allowed after the given move sequence,
+    /// to speed up solver methods.
+    ///
+    /// This is to avoid double rotations of faces (e.g. R R') and
+    /// excessive rotations of antipodal faces (e.g. R L R can be simplified
+    /// to R2 L).
+    pub fn allowed_moves_after_seq(&self) -> u8 {
+        let sol = self.get_moves();
+        match sol.len() {
+            0 => 0,
+            1 => {
+                let last_move = sol[sol.len() - 1];
+                1 << get_basemove_pos(last_move.basemove)
+            }
+            _ => {
+                let last_move = sol[sol.len() - 1];
+                let second_to_last = sol[sol.len() - 2];
+                if get_antipode(last_move.basemove) == second_to_last.basemove {
+                    (1 << get_basemove_pos(last_move.basemove))
+                        + (1 << get_basemove_pos(second_to_last.basemove))
+                } else {
+                    1 << get_basemove_pos(last_move.basemove)
+                }
+            }
+        }
+    }
 }
 
 impl std::fmt::Display for MoveSequence {
@@ -172,10 +199,10 @@ pub struct Conjugate(pub MoveSequence, pub Commutator);
 /// - Corners: UBL UBR UFR UFL DFL DFR DBR DBL
 /// - Edges: UB UR UF UL BL BR FR FL DF DR DB DL
 struct Move {
-    pub cp_change: [u8; 8], // a[i] gives the position that i goes to
-    pub co_change: [i8; 8],
-    pub ep_change: [u8; 12],
-    pub eo_change: [i8; 12],
+    cp_change: [u8; 8], // a[i] gives the position that i goes to
+    co_change: [i8; 8],
+    ep_change: [u8; 12],
+    eo_change: [i8; 12],
 }
 
 /// A shorthand macro that can be used to construct MoveInstances.
@@ -265,34 +292,6 @@ pub(crate) fn get_allowed_post_moves(prev_bv: u8, last_move: Option<BaseMoveToke
     }
 }
 
-/// Determines which moves are allowed after the given move sequence,
-/// to speed up solver methods.
-///
-/// This is to avoid double rotations of faces (e.g. R R') and
-/// excessive rotations of antipodal faces (e.g. R L R can be simplified
-/// to R2 L).
-// TODO: refactor into struct method
-pub fn allowed_moves_after_seq(moves: &MoveSequence) -> u8 {
-    let sol = moves.get_moves();
-    match sol.len() {
-        0 => 0,
-        1 => {
-            let last_move = sol[sol.len() - 1];
-            1 << get_basemove_pos(last_move.basemove)
-        }
-        _ => {
-            let last_move = sol[sol.len() - 1];
-            let second_to_last = sol[sol.len() - 2];
-            if get_antipode(last_move.basemove) == second_to_last.basemove {
-                (1 << get_basemove_pos(last_move.basemove))
-                    + (1 << get_basemove_pos(second_to_last.basemove))
-            } else {
-                1 << get_basemove_pos(last_move.basemove)
-            }
-        }
-    }
-}
-
 /// The underlying struct for representing a configuration of the Rubik's Cube.
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct CubeState {
@@ -368,21 +367,6 @@ fn get_index_of_orientation(ori: &[i8], num_orientations: u8) -> u16 {
     result
 }
 
-/// Returns a triple representing a compressed representation of a Rubik's
-/// Cube configuration.
-///
-/// The elements of the triple consist of a corner index, an
-/// edge orientation (EO) index, and an edge permutation (EP) index.
-// TODO: refactor into struct method
-pub fn get_index_of_state(state: &CubeState) -> (u32, u16, u64) {
-    let cp_index = get_index_of_permutation(&state.cp);
-    let co_index = get_index_of_orientation(&state.co, 3);
-    let corner_index = cp_index * u32::pow(3, 7) + (co_index as u32);
-    let ep_index = get_index_of_permutation(&state.ep) as u64;
-    let eo_index = get_index_of_orientation(&state.eo, 2);
-    (corner_index, eo_index, ep_index)
-}
-
 impl CubeState {
     fn apply_basemove(&self, m: &BaseMoveToken) -> Self {
         let mov = get_move_matrix(m);
@@ -414,9 +398,19 @@ impl CubeState {
             .fold(self.clone(), |acc, mov| acc.apply_move_instance(mov))
     }
 
-    // pub fn random() -> Self {
-
-    // }
+    /// Returns a triple representing a compressed representation of a Rubik's
+    /// Cube configuration.
+    ///
+    /// The elements of the triple consist of a corner index, an
+    /// edge orientation (EO) index, and an edge permutation (EP) index.
+    pub fn state_index(&self) -> (u32, u16, u64) {
+        let cp_index = get_index_of_permutation(&self.cp);
+        let co_index = get_index_of_orientation(&self.co, 3);
+        let corner_index = cp_index * u32::pow(3, 7) + (co_index as u32);
+        let ep_index = get_index_of_permutation(&self.ep) as u64;
+        let eo_index = get_index_of_orientation(&self.eo, 2);
+        (corner_index, eo_index, ep_index)
+    }
 }
 
 /// A vector of all allowed moves on a Rubik's Cube.
@@ -482,3 +476,34 @@ const MOVE_B: Move = Move {
     ep_change: [4, 1, 2, 3, 10, 0, 6, 7, 8, 9, 5, 11],
     eo_change: [1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0],
 };
+
+#[cfg(test)]
+mod tests {
+    use itertools::{repeat_n, Itertools};
+
+    use super::*;
+
+    #[test]
+    fn test_custom_permutation_index() {
+        for n in 1..=10 {
+            for (i, p) in (0..n).permutations(n as usize).enumerate() {
+                let left = get_index_of_permutation(p.as_slice());
+                let right = i as u32;
+
+                assert_eq!(left, right);
+            }
+        }
+    }
+
+    #[test]
+    fn test_custom_orientation_index() {
+        let k = 8;
+        for n in 1..=6 {
+            for (i, p) in repeat_n(0..n, k - 1).multi_cartesian_product().enumerate() {
+                let left = get_index_of_orientation(p.as_slice(), n as u8);
+                let right = (i / n as usize) as u16;
+                assert_eq!(left, right);
+            }
+        }
+    }
+}

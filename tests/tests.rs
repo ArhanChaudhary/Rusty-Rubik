@@ -56,7 +56,7 @@ mod tests {
 
     #[test]
     fn index_of_solved_state() {
-        let (c, eo, ep) = get_index_of_state(&CubeState::default());
+        let (c, eo, ep) = CubeState::default().state_index();
         assert_eq!(c, 0);
         assert_eq!(eo, 0);
         assert_eq!(ep, 0);
@@ -77,7 +77,7 @@ mod tests {
         let solved = CubeState::default();
         let twisted =
             solved.apply_move_instance(&MoveInstance::new(BaseMoveToken::U, Direction::Normal));
-        let (c, eo, ep) = get_index_of_state(&twisted);
+        let (c, eo, ep) = twisted.state_index();
         assert_eq!(tables.corners[c as usize], 1);
         assert_eq!(tables.eo[eo as usize], 0);
         assert_eq!(tables.ep[ep as usize], 1);
@@ -89,7 +89,7 @@ mod tests {
         let solved = CubeState::default();
         let twisted =
             solved.apply_move_instance(&MoveInstance::new(BaseMoveToken::F, Direction::Normal));
-        let (c, eo, ep) = get_index_of_state(&twisted);
+        let (c, eo, ep) = twisted.state_index();
         assert_eq!(tables.corners[c as usize], 1);
         assert_eq!(tables.eo[eo as usize], 1);
         assert_eq!(tables.ep[ep as usize], 1);

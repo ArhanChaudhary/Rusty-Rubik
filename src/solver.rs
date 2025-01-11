@@ -136,7 +136,7 @@ impl<'a> IDASolver<'a> {
             SearchResult::Found
         } else {
             let mut min = u8::MAX;
-            let allowed_moves = allowed_moves_after_seq(curr_path);
+            let allowed_moves = curr_path.allowed_moves_after_seq();
             for m in ALL_MOVES
                 .iter()
                 .filter(|mo| ((1 << get_basemove_pos(mo.basemove)) & allowed_moves) == 0)
