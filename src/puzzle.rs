@@ -40,34 +40,34 @@ pub trait Puzzle {
 
 #[derive(Clone)]
 pub struct Cube3 {
-    pub cp: [u8; 8],
-    pub co: [u8; 8],
-    pub ep: [u8; 12],
-    pub eo: [u8; 12],
+    cp: [u8; 8],
+    co: [u8; 8],
+    ep: [u8; 12],
+    eo: [u8; 12],
 }
 
-pub struct Cube4 {
-    pub cp: [u8; 8],
-    pub co: [i8; 8],
-    pub wings1: [u8; 24],
-    pub xcenters1: [u8; 24],
-}
+// pub struct Cube4 {
+//     cp: [u8; 8],
+//     co: [i8; 8],
+//     wings1: [u8; 24],
+//     xcenters1: [u8; 24],
+// }
 
-pub struct Cube5 {
-    // corners are always the same...
-    pub wings1: [u8; 24],
-    pub midges_ep: [u8; 12],
-    pub midges_eo: [i8; 12],
-    pub xcenters1: [u8; 24],
-    pub pluscenters1: [u8; 24],
-}
+// pub struct Cube5 {
+//     // corners are always the same...
+//     wings1: [u8; 24],
+//     midges_ep: [u8; 12],
+//     midges_eo: [i8; 12],
+//     xcenters1: [u8; 24],
+//     pluscenters1: [u8; 24],
+// }
 
-pub struct Cube6 {
-    //...
-    pub wings1: [u8; 24],
-    pub wings2: [u8; 24],
-    // ...
-}
+// pub struct Cube6 {
+//     //...
+//     wings1: [u8; 24],
+//     wings2: [u8; 24],
+//     // ...
+// }
 
 // pub struct Cube335 {
 //     pub cp: [u8, 8],
@@ -100,9 +100,9 @@ pub enum CubeAxis {
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct CubeMove {
-    pub axis: u8,
-    pub depth: u8,
-    pub rotation: u8,
+    axis: u8,
+    depth: u8,
+    rotation: u8,
 }
 
 impl PuzzleMove for CubeMove {}

@@ -21,11 +21,11 @@ use std::io::Write;
  */
 pub struct PruningTables {
     /// A pruning table representing the subgroup of corner permutation and orientation.
-    pub corners: Vec<u8>,
-    /// A pruning table representing the subgroup of edge orientation.
-    pub eo: Vec<u8>,
-    /// A pruning table representing the subgroup of edge permutation.
-    pub ep: Vec<u8>,
+    corners: Vec<u8>,
+    // A pruning table representing the subgroup of edge orientation.
+    // pub eo: Vec<u8>,
+    // A pruning table representing the subgroup of edge permutation.
+    // pub ep: Vec<u8>,
 }
 
 impl PruningTables {
@@ -33,23 +33,28 @@ impl PruningTables {
     /// file names.
     pub fn default_tables() -> Self {
         let corners = std::fs::read("corners.pt").unwrap();
-        let edges_o = std::fs::read("edges_o.pt").unwrap();
-        let edges_p = std::fs::read("edges_p.pt").unwrap();
+        // let edges_o = std::fs::read("edges_o.pt").unwrap();
+        // let edges_p = std::fs::read("edges_p.pt").unwrap();
         PruningTables {
             corners,
-            eo: edges_o,
-            ep: edges_p,
+            // eo: edges_o,
+            // ep: edges_p,
         }
+    }
+
+    pub fn corners(&self, index: usize) -> u8 {
+        self.corners[index]
     }
 
     /// Computes a lower bound on the number of moves needed to
     /// solve the given state, based on the pruning table values.
     pub fn compute_h_value(&self, state: &CubeState) -> u8 {
         let (corners, eo, ep) = state.state_index();
-        std::cmp::max(
-            self.corners[corners as usize],
-            std::cmp::max(self.eo[eo as usize], self.ep[ep as usize]),
-        )
+        // std::cmp::max(
+        //     self.corners[corners as usize],
+        //     std::cmp::max(self.eo[eo as usize], self.ep[ep as usize]),
+        // )
+        self.corners[corners as usize]
     }
 }
 

@@ -7,6 +7,8 @@
 //! of these four properties (with correct parity relations)
 //! uniquely determines the state of the cube.
 
+use std::{fmt::Display, ops::{Deref, DerefMut}};
+
 use strum_macros::EnumString;
 
 /// An enum for the faces of the Rubik's Cube.
@@ -66,14 +68,14 @@ impl MoveInstance {
     }
 
     pub fn invert(&self) -> Self {
-        Self::new(
-            self.basemove,
-            match self.dir {
+        Self {
+            basemove: self.basemove,
+            dir: match self.dir {
                 Direction::Normal => Direction::Prime,
                 Direction::Prime => Direction::Normal,
                 x => x,
             },
-        )
+        }
     }
 }
 
@@ -85,19 +87,17 @@ impl std::fmt::Display for MoveInstance {
 
 /// A struct representing sequences of moves, used for representing
 /// scramble sequences and solution sequences.
-pub struct MoveSequence(pub Vec<MoveInstance>);
+#[derive(Default)]
+pub struct MoveSequence(Vec<MoveInstance>);
 
 impl MoveSequence {
-    pub fn get_moves(&self) -> &Vec<MoveInstance> {
-        &self.0
-    }
-    pub fn get_moves_mut(&mut self) -> &mut Vec<MoveInstance> {
-        &mut self.0
+    pub fn from(vec: Vec<MoveInstance>) -> Self {
+        Self(vec)
     }
 
     pub fn invert(&self) -> Self {
         let mut moves = vec![];
-        for m in self.get_moves().iter().rev() {
+        for m in self.iter().rev() {
             moves.push(m.invert());
         }
         MoveSequence(moves)
@@ -110,16 +110,15 @@ impl MoveSequence {
     /// excessive rotations of antipodal faces (e.g. R L R can be simplified
     /// to R2 L).
     pub fn allowed_moves_after_seq(&self) -> u8 {
-        let sol = self.get_moves();
-        match sol.len() {
+        match self.len() {
             0 => 0,
             1 => {
-                let last_move = sol[sol.len() - 1];
+                let last_move = self[self.len() - 1];
                 1 << get_basemove_pos(last_move.basemove)
             }
             _ => {
-                let last_move = sol[sol.len() - 1];
-                let second_to_last = sol[sol.len() - 2];
+                let last_move = self[self.len() - 1];
+                let second_to_last = self[self.len() - 2];
                 if get_antipode(last_move.basemove) == second_to_last.basemove {
                     (1 << get_basemove_pos(last_move.basemove))
                         + (1 << get_basemove_pos(second_to_last.basemove))
@@ -131,66 +130,29 @@ impl MoveSequence {
     }
 }
 
-impl std::fmt::Display for MoveSequence {
+impl Display for MoveSequence {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut strs = vec![];
-        for m in self.get_moves().iter() {
+        for m in self.iter() {
             strs.push(m.to_string());
         }
         write!(f, "{}", strs.join(" "))
     }
 }
 
-/// A struct representing a commutator, taking the form of a tuple.
-///
-/// If the first element of this tuple is $A$, and the second is $B$, then
-/// the commutator represented by this is $[A,B] = ABA^{-1}B^{-1}$.
-///
-/// One can create a Commutator object as such:
-/// ```
-/// use rusty_rubik::cube::*;
-/// use rusty_rubik::cube_move;
-///
-/// let a = MoveSequence(vec![
-///     cube_move!(R, Normal),
-///     cube_move!(U, Prime),
-///     cube_move!(R, Prime),
-/// ]);
-/// let b = MoveSequence(vec![cube_move!(D, Normal)]);
-///
-/// // commutator representing [R U' R', D] = R U' R' D R U R' D'
-/// let comm = Commutator(a,b);
-///
-/// ```
-pub struct Commutator(pub MoveSequence, pub MoveSequence);
+impl Deref for MoveSequence {
+    type Target = Vec<MoveInstance>;
 
-/// A struct representing a conjugate, taking the form of a tuple.
-///
-/// If the first element of this tuple is $C$, and the second is a commutator $B$,
-/// then the conjugate represented by this is $[C: B] = CBC^{-1}$.
-///
-/// One can create a Conjugate object as such:
-///
-/// ```
-/// use rusty_rubik::cube::*;
-/// use rusty_rubik::cube_move;
-///
-/// let c = MoveSequence(vec![
-///     cube_move!(R, Normal),
-/// ]);
-/// let a = MoveSequence(vec![
-///     cube_move!(R, Normal),
-///     cube_move!(D, Normal),
-///     cube_move!(R, Prime),
-/// ]);
-/// let b = MoveSequence(vec![
-///     cube_move!(U, Double),
-/// ]);
-///
-/// // conjugate representing [R: [R D R', U2]] = R2 D R' U2 R D' R' U2 R'
-/// let comm = Commutator(a,b);
-/// ```
-pub struct Conjugate(pub MoveSequence, pub Commutator);
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for MoveSequence {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
 
 /// An internal set of permutation vectors representing what action
 /// is done to a configuration of the Rubik's Cube when a move is applied.
@@ -295,10 +257,10 @@ pub(crate) fn get_allowed_post_moves(prev_bv: u8, last_move: Option<BaseMoveToke
 /// The underlying struct for representing a configuration of the Rubik's Cube.
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct CubeState {
-    pub cp: [u8; 8],
-    pub co: [i8; 8],
-    pub ep: [u8; 12],
-    pub eo: [i8; 12],
+    cp: [u8; 8],
+    co: [i8; 8],
+    ep: [u8; 12],
+    eo: [i8; 12],
 }
 
 impl Default for CubeState {
@@ -393,7 +355,6 @@ impl CubeState {
     /// Applies a sequence of moves, in order to a Rubik's Cube configuration.
     pub fn apply_move_instances(&self, moves: &MoveSequence) -> Self {
         moves
-            .get_moves()
             .iter()
             .fold(self.clone(), |acc, mov| acc.apply_move_instance(mov))
     }

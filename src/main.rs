@@ -12,7 +12,7 @@ fn main() {
         let Ok(scramble) = parser::parse_scramble(input) else {
             continue;
         };
-        let scramble = cube::MoveSequence(scramble);
+        let scramble = cube::MoveSequence::from(scramble);
         let solved = cube::CubeState::default();
         let twisted = solved.apply_move_instances(&scramble);
         println!("Twisted state: {:?}", twisted);
