@@ -6,18 +6,6 @@ use crate::pruning::PruningTables;
 use crate::{cube::*, CycleType};
 
 /**
- * A generic solver trait.
- */
-pub trait Solver {
-    /// Gets a reference to the starting configuration.
-    fn get_start_state(&self) -> &CubeState;
-
-    /// Applies the solver-specific search algorithm to find a sequence
-    /// of moves that transform the starting state into the solved state.
-    fn solve(&self) -> MoveSequence;
-}
-
-/**
  * A solver implementing the iterative deepening A* search algorithm [Korf, 1997].
  *
  * This solver uses the pruning tables pre-computed in `pruning.rs`
@@ -28,6 +16,7 @@ pub struct IDASolver<'a> {
     start_state: CubeState,
     pruning_tables: &'a PruningTables,
     target_cycle_type: CycleType<u8>,
+    multi_bv: Vec<u8>,
 }
 
 enum SearchResult {
@@ -41,15 +30,17 @@ impl<'a> IDASolver<'a> {
         pruning_tables: &'a PruningTables,
         target_cycle_type: CycleType<u8>,
     ) -> Self {
+        let multi_bv = vec![0_u8; 8];
         Self {
             start_state,
             pruning_tables,
             target_cycle_type,
+            multi_bv,
         }
     }
 
     fn search_for_solution(
-        &self,
+        &mut self,
         curr_path: &mut MoveSequence,
         last_state: &CubeState,
         g: u8,
@@ -59,7 +50,9 @@ impl<'a> IDASolver<'a> {
         let f = g + last_h;
         if f > bound {
             SearchResult::NewBound(f)
-        } else if last_state.induces_corner_cycle_type(&self.target_cycle_type) {
+        } else if last_state
+            .induces_corner_cycle_type(&self.target_cycle_type, self.multi_bv.as_mut())
+        {
             // yay it's solved!
             SearchResult::Found
         } else {
@@ -89,22 +82,16 @@ impl<'a> IDASolver<'a> {
             SearchResult::NewBound(min)
         }
     }
-}
 
-impl Solver for IDASolver<'_> {
-    fn get_start_state(&self) -> &CubeState {
-        &self.start_state
-    }
-
-    fn solve(&self) -> MoveSequence {
-        let start_state = self.get_start_state();
+    pub fn solve(&mut self) -> MoveSequence {
+        let start_state = self.start_state.clone();
 
         // initial lower bound on number of moves needed to solve start state
-        let mut bound = self.pruning_tables.compute_h_value(start_state);
+        let mut bound = self.pruning_tables.compute_h_value(&start_state);
         let mut path: MoveSequence = MoveSequence::default();
         loop {
             println!("Searching depth {}...", bound);
-            match self.search_for_solution(&mut path, start_state, 0, bound) {
+            match self.search_for_solution(&mut path, &start_state, 0, bound) {
                 SearchResult::Found => {
                     break;
                 }
