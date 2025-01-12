@@ -15,3 +15,15 @@ pub mod parser;
 pub mod pruning;
 pub mod solver;
 pub mod puzzle;
+
+pub struct CycleType<T> {
+    partition: Vec<(T, bool)>,
+}
+
+impl<T> CycleType<T> {
+    pub fn from(partition: Vec<(T, bool)>) -> Self {
+        Self {
+            partition,
+        }
+    }
+}

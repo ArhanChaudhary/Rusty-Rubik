@@ -107,16 +107,6 @@ pub struct CubeMove {
 
 impl PuzzleMove for CubeMove {}
 
-impl CubeMove {
-    fn new(axis: u8, depth: u8, rotation: u8) -> Self {
-        CubeMove {
-            axis,
-            depth,
-            rotation,
-        }
-    }
-}
-
 impl Default for Cube3 {
     fn default() -> Self {
         Self {

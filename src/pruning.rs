@@ -49,7 +49,8 @@ impl PruningTables {
     /// Computes a lower bound on the number of moves needed to
     /// solve the given state, based on the pruning table values.
     pub fn compute_h_value(&self, state: &CubeState) -> u8 {
-        let (corners, eo, ep) = state.state_index();
+        let corners = state.corner_state_index();
+        // let (corners, eo, ep) = state.state_index();
         // std::cmp::max(
         //     self.corners[corners as usize],
         //     std::cmp::max(self.eo[eo as usize], self.ep[ep as usize]),
@@ -159,8 +160,9 @@ pub fn generate_pruning_table_corners(filename: String) {
         9,
         &mut table,
         &|state: &CubeState| {
-            let (corner, _, _) = state.state_index();
-            corner as usize
+            // let (corner, _, _) = state.state_index();
+            // corner as usize
+            state.corner_state_index() as usize
         },
         String::from("corners"),
     );

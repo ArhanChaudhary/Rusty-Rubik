@@ -7,9 +7,14 @@
 //! of these four properties (with correct parity relations)
 //! uniquely determines the state of the cube.
 
-use std::{fmt::Display, ops::{Deref, DerefMut}};
+use std::{
+    fmt::Display,
+    ops::{Deref, DerefMut},
+};
 
 use strum_macros::EnumString;
+
+use crate::{parser, CycleType};
 
 /// An enum for the faces of the Rubik's Cube.
 ///
@@ -359,18 +364,48 @@ impl CubeState {
             .fold(self.clone(), |acc, mov| acc.apply_move_instance(mov))
     }
 
-    /// Returns a triple representing a compressed representation of a Rubik's
-    /// Cube configuration.
-    ///
-    /// The elements of the triple consist of a corner index, an
-    /// edge orientation (EO) index, and an edge permutation (EP) index.
-    pub fn state_index(&self) -> (u32, u16, u64) {
+    pub fn corner_state_index(&self) -> u32 {
         let cp_index = get_index_of_permutation(&self.cp);
         let co_index = get_index_of_orientation(&self.co, 3);
-        let corner_index = cp_index * u32::pow(3, 7) + (co_index as u32);
-        let ep_index = get_index_of_permutation(&self.ep) as u64;
-        let eo_index = get_index_of_orientation(&self.eo, 2);
-        (corner_index, eo_index, ep_index)
+        cp_index * u32::pow(3, 7) + (co_index as u32)
+    }
+
+    // TODO: figure out how to get this working for any piece orbit
+    // TODO: I'm really unsatisfied with this implementation, requiring two memory allocations
+    pub fn induces_corner_cycle_type(&self, cycle_type: &CycleType<u8>) -> bool {
+        let mut covered_cycle_lengths = vec![false; cycle_type.partition.len()];
+        let mut covered_cycles_count = 0;
+        let mut visited_corners = vec![false; self.cp.len()];
+        for i in 0..self.cp.len() {
+            if visited_corners[i] {
+                continue;
+            }
+            visited_corners[i] = true;
+            let mut actual_cycle_length = 1;
+            let mut corner = self.cp[i] as usize;
+            let mut orientation_sum = self.co[corner];
+            while corner != i {
+                actual_cycle_length += 1;
+                visited_corners[corner] = true;
+                corner = self.cp[corner] as usize;
+                orientation_sum += self.co[corner];
+            }
+            if actual_cycle_length == 1 && orientation_sum == 0 {
+                continue;
+            }
+            let Some(valid_cycle_index) = cycle_type.partition.iter().enumerate().position(
+                |(j, &(expected_cycle_length, orients))| {
+                    expected_cycle_length == actual_cycle_length
+                        && orients == (orientation_sum != 0)
+                        && !covered_cycle_lengths[j]
+                },
+            ) else {
+                return false;
+            };
+            covered_cycle_lengths[valid_cycle_index] = true;
+            covered_cycles_count += 1;
+        }
+        covered_cycles_count == covered_cycle_lengths.len()
     }
 }
 
@@ -440,9 +475,8 @@ const MOVE_B: Move = Move {
 
 #[cfg(test)]
 mod tests {
-    use itertools::{repeat_n, Itertools};
-
     use super::*;
+    use itertools::{repeat_n, Itertools};
 
     #[test]
     fn test_custom_permutation_index() {
@@ -466,5 +500,80 @@ mod tests {
                 assert_eq!(left, right);
             }
         }
+    }
+
+    macro_rules! induces_corner_cycle_type {
+        ($scramble:tt, $cycle_type:expr) => {{
+            let parsed_seq = parser::parse_scramble($scramble).unwrap();
+            let seq = MoveSequence(parsed_seq);
+            let state = CubeState::default().apply_move_instances(&seq);
+            state.induces_corner_cycle_type(&$cycle_type)
+        }};
+    }
+
+    #[test]
+    fn test_induces_cycle_type_all_orients() {
+        assert!(induces_corner_cycle_type!(
+            "F2 L' U2 F U F U L' B U' F' U D2 L F2 B'",
+            CycleType::from(vec![(1, true), (3, true)])
+        ));
+
+        assert!(induces_corner_cycle_type!(
+            "F2 L' U2 F2 U L' U' F' U2 B D2 L F2 B'",
+            &CycleType::from(vec![(1, true), (1, true), (3, true)])
+        ));
+
+        assert!(induces_corner_cycle_type!(
+            "U2 L B L2 F U2 B' U2 R U' F R' F' R F' L' U2",
+            &CycleType::from(vec![(1, true), (5, true)])
+        ));
+
+        assert!(induces_corner_cycle_type!(
+            "R' U2 R' U2 F' D' L F L2 F U2 F2 D' L' D2 F R2",
+            &CycleType::from(vec![(1, true), (3, true)])
+        ));
+
+        assert!(induces_corner_cycle_type!(
+            "B2 U' B' D B' L' D' B U' R2 B2 R U B2 R B' R U",
+            &CycleType::from(vec![(1, true), (1, true), (3, true)])
+        ));
+
+        assert!(induces_corner_cycle_type!(
+            "R2 L2 D' B L2 D' B L' B D2 R2 B2 R' D' B2 L2 U'",
+            &CycleType::from(vec![(2, true), (3, true)])
+        ));
+
+        assert!(induces_corner_cycle_type!(
+            "F' B2 R L U2 B U2 L2 F2 U R L B' L' D' R' D' B'",
+            &CycleType::from(vec![(1, true), (2, true), (3, true)])
+        ));
+
+        assert!(induces_corner_cycle_type!(
+            "L' D2 F B2 U F' L2 B R F2 D R' L F R' F' D",
+            &CycleType::from(vec![(2, true), (3, true)])
+        ));
+
+        assert!(induces_corner_cycle_type!(
+            "B' L' F2 R U' R2 F' L2 F R' L B L' U' F2 U' D2 L",
+            &CycleType::from(vec![(1, true), (2, true), (3, true)])
+        ));
+    }
+
+    #[test]
+    fn test_induces_cycle_type_mixed_orients() {
+        assert!(induces_corner_cycle_type!(
+            "F2 D2 L' F D R2 F2 U2 L2 F R' B2 D2 R2 U R2 U",
+            &CycleType::from(vec![(1, true), (2, false), (3, true)])
+        ));
+
+        assert!(induces_corner_cycle_type!(
+            "F2 B' R' F' L' D B' U' F U B' U2 D L' F' L' B R2",
+            &CycleType::from(vec![(1, true), (2, false), (3, true)])
+        ));
+
+        assert!(induces_corner_cycle_type!(
+            "U",
+            &CycleType::from(vec![(4, false)])
+        ));
     }
 }

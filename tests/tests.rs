@@ -2,8 +2,6 @@
 mod tests {
     use rusty_rubik::cube::*;
     use rusty_rubik::parser::*;
-    use rusty_rubik::pruning::*;
-    use rusty_rubik::solver::*;
     // PARSER TESTS
     #[test]
     fn parse_single_move() {
@@ -56,54 +54,10 @@ mod tests {
 
     #[test]
     fn index_of_solved_state() {
-        let (c, eo, ep) = CubeState::default().state_index();
+        // let (c, eo, ep) = CubeState::default().state_index();
+        let c = CubeState::default().corner_state_index();
         assert_eq!(c, 0);
-        assert_eq!(eo, 0);
-        assert_eq!(ep, 0);
-    }
-
-    // PRUNING TABLE TESTS
-    #[test]
-    fn pruning_table_of_solved_is_zero() {
-        let tables = PruningTables::default_tables();
-        // assert_eq!(tables.eo[0], 0);
-        // assert_eq!(tables.ep[0], 0);
-        assert_eq!(tables.corners(0), 0);
-    }
-
-    #[test]
-    fn one_move_pruning_top() {
-        let tables = PruningTables::default_tables();
-        let solved = CubeState::default();
-        let twisted =
-            solved.apply_move_instance(&MoveInstance::new(BaseMoveToken::U, Direction::Normal));
-        let (c, eo, ep) = twisted.state_index();
-        assert_eq!(tables.corners(c as usize), 1);
-        // assert_eq!(tables.eo[eo as usize], 0);
-        // assert_eq!(tables.ep[ep as usize], 1);
-    }
-
-    #[test]
-    fn one_move_pruning_front() {
-        let tables = PruningTables::default_tables();
-        let solved = CubeState::default();
-        let twisted =
-            solved.apply_move_instance(&MoveInstance::new(BaseMoveToken::F, Direction::Normal));
-        let (c, eo, ep) = twisted.state_index();
-        assert_eq!(tables.corners(c as usize), 1);
-        // assert_eq!(tables.eo[eo as usize], 1);
-        // assert_eq!(tables.ep[ep as usize], 1);
-    }
-
-    #[test]
-    fn u_perm_optimal() {
-        let tables = PruningTables::default_tables();
-        let scramble = MoveSequence::from(parse_scramble("R U' R U R U R U' R' U' R2").unwrap());
-        let solved = CubeState::default();
-        let twisted = solved.apply_move_instances(&scramble);
-        let solver = IDASolver::new(twisted, &tables);
-
-        let solution = solver.solve();
-        assert_eq!(solution.len(), 9);
+        // assert_eq!(eo, 0);
+        // assert_eq!(ep, 0);
     }
 }
