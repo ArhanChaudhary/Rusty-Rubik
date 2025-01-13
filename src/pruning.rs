@@ -8,7 +8,12 @@
 //! from the solved state. For each state, the depth is recorded in a vector
 //! of the appropriate size.
 
-use crate::cube::*;
+use itertools::{repeat_n, Itertools};
+
+use crate::{
+    cube::{self, *},
+    CycleType,
+};
 use std::io::Write;
 
 /**
@@ -62,25 +67,28 @@ impl PruningTables {
 /// A wrapper function around the main logic of IDDFS.
 fn iddfs(
     goal_states: &[CubeState],
-    depth: u8,
     bv: &mut [u8],
     prop_func: &dyn Fn(&CubeState) -> usize,
     tag: String,
 ) {
-    if depth < 1 {
-        panic!("Depth must be positive");
-    }
-    for d in 1..depth {
-        println!("Building {} pruning table for depth {}...", tag, d);
+    let mut depth = 1;
+    loop {
+        println!("Building {} pruning table for depth {}...", tag, depth);
         for goal_state in goal_states {
-            iddfs_search(goal_state, d, d, bv, 0, &prop_func);
+            iddfs_search(goal_state, depth, depth, bv, 0, &prop_func);
         }
+        let remaining = bv.iter().filter(|&&x| x == 0).count();
         println!(
             "{} entries remaining at depth {}",
             bv.iter().filter(|&&x| x == 0).count(),
-            d
+            depth
         );
+        if remaining == 0 {
+            break;
+        }
+        depth += 1;
     }
+    println!("Pruning table for {} generated.", tag);
 }
 
 /// Starts a depth-bounded DFS from the given state.
@@ -127,12 +135,29 @@ fn write_table(table: &[u8], filename: String) {
 }
 
 /// Generates a pruning table for the corners of a Rubik's Cube.
-pub fn generate_pruning_table_corners(filename: String) {
-    let goal_states = vec![CubeState::default()];
+pub fn generate_pruning_table_corners(filename: String, cycle_type: &CycleType<u8>) {
+    let mut goal_states = vec![];
+
+    let cubies: u8 = 8;
+    let orientation_count: i8 = 3;
+    let mut multi_bv = vec![0_u8; 8];
+    for (cp_index, cp) in (0..cubies).permutations(cubies as usize).enumerate() {
+        for (co_index, co) in repeat_n(0..orientation_count, cubies as usize)
+            .multi_cartesian_product()
+            .filter(|p| p.iter().sum::<i8>().rem_euclid(orientation_count) == 0)
+            .enumerate()
+        {
+            if cube::induces_cycle_type(&cp, &co, cycle_type, &mut multi_bv) {
+                goal_states.push(CubeState::from_corners(
+                    cp.clone().try_into().unwrap(),
+                    co.try_into().unwrap(),
+                ));
+            }
+        }
+    }
     let mut table = vec![0_u8; 88179840];
     iddfs(
         &goal_states,
-        9,
         &mut table,
         &|state: &CubeState| {
             // let (corner, _, _) = state.state_index();

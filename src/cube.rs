@@ -14,7 +14,7 @@ use std::{
 
 use strum_macros::EnumString;
 
-use crate::{parser, CycleType};
+use crate::CycleType;
 
 /// An enum for the faces of the Rubik's Cube.
 ///
@@ -334,7 +334,65 @@ fn get_index_of_orientation(ori: &[i8], num_orientations: u8) -> u16 {
     result
 }
 
+pub fn induces_cycle_type(
+    perm: &[u8],
+    ori: &[i8],
+    cycle_type: &CycleType<u8>,
+    multi_bv: &mut [u8],
+) -> bool {
+    // TODO: get this working for any piece orbit
+    // reuse memory
+    multi_bv.fill(0);
+    // visited corners is LSB, covered_cycle_lengths is 2nd LSB
+    let mut covered_cycles_count = 0;
+    for i in 0..perm.len() {
+        if multi_bv[i] & 1 != 0 {
+            continue;
+        }
+        multi_bv[i] |= 1;
+        let mut actual_cycle_length = 1;
+        let mut corner = perm[i] as usize;
+        let mut orientation_sum = ori[corner];
+
+        while corner != i {
+            actual_cycle_length += 1;
+            multi_bv[corner] |= 1;
+            corner = perm[corner] as usize;
+            orientation_sum += ori[corner];
+        }
+
+        let actual_orients = orientation_sum != 0;
+        if actual_cycle_length == 1 && !actual_orients {
+            continue;
+        }
+        let Some(valid_cycle_index) = cycle_type.partition.iter().enumerate().position(
+            |(j, &(expected_cycle_length, expected_orients))| {
+                expected_cycle_length == actual_cycle_length
+                    && expected_orients == actual_orients
+                    && (multi_bv[j] & 2 == 0)
+            },
+        ) else {
+            return false;
+        };
+        multi_bv[valid_cycle_index] |= 2;
+        covered_cycles_count += 1;
+        // cannot possibly return true if this runs
+        if covered_cycles_count > cycle_type.partition.len() {
+            return false;
+        }
+    }
+    covered_cycles_count == cycle_type.partition.len()
+}
+
 impl CubeState {
+    pub fn from_corners(cp: [u8; 8], co: [i8; 8]) -> Self {
+        CubeState {
+            cp,
+            co,
+            ..Default::default()
+        }
+    }
+
     fn apply_basemove(&self, m: &BaseMoveToken) -> Self {
         let mov = get_move_matrix(m);
         let oriented_corners = apply_orientation!(&self.co, &mov.co_change, 3);
@@ -370,53 +428,12 @@ impl CubeState {
         cp_index * u32::pow(3, 7) + (co_index as u32)
     }
 
-    // TODO: get this working for any piece orbit
     pub fn induces_corner_cycle_type(
         &self,
         cycle_type: &CycleType<u8>,
         multi_bv: &mut [u8],
     ) -> bool {
-        // reuse memory
-        multi_bv.fill(0);
-        // visited corners is LSB, covered_cycle_lengths is 2nd LSB
-        let mut covered_cycles_count = 0;
-        for i in 0..self.cp.len() {
-            if multi_bv[i] & 1 != 0 {
-                continue;
-            }
-            multi_bv[i] |= 1;
-            let mut actual_cycle_length = 1;
-            let mut corner = self.cp[i] as usize;
-            let mut orientation_sum = self.co[corner];
-
-            while corner != i {
-                actual_cycle_length += 1;
-                multi_bv[corner] |= 1;
-                corner = self.cp[corner] as usize;
-                orientation_sum += self.co[corner];
-            }
-
-            let actual_orients = orientation_sum != 0;
-            if actual_cycle_length == 1 && !actual_orients {
-                continue;
-            }
-            let Some(valid_cycle_index) = cycle_type.partition.iter().enumerate().position(
-                |(j, &(expected_cycle_length, expected_orients))| {
-                    expected_cycle_length == actual_cycle_length
-                        && expected_orients == actual_orients
-                        && (multi_bv[j] & 2 == 0)
-                },
-            ) else {
-                return false;
-            };
-            multi_bv[valid_cycle_index] |= 2;
-            covered_cycles_count += 1;
-            // cannot possibly return true if this runs
-            if covered_cycles_count > cycle_type.partition.len() {
-                return false;
-            }
-        }
-        covered_cycles_count == cycle_type.partition.len()
+        induces_cycle_type(&self.cp, &self.co, cycle_type, multi_bv)
     }
 }
 
@@ -487,6 +504,7 @@ const MOVE_B: Move = Move {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parser;
     use itertools::{repeat_n, Itertools};
 
     #[test]
