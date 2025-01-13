@@ -4,8 +4,24 @@ use rusty_rubik::solver::IDASolver;
 use rusty_rubik::CycleType;
 
 fn main() {
-    let cycle_type = CycleType::from(vec![(1, true), (2, false), (3, true)]);
-    let tag = "halfcorners".to_string();
+    let cycle_type = CycleType {
+        edge_partition: vec![(1, true), (5, true)],
+        corner_partition: vec![(1, true), (3, true)],
+    };
+    // CycleType {
+    //     edge_partition: vec![(1, true), (5, true)],
+    //     corner_partition: vec![(1, true), (1, true), (3, true)],
+    // }
+    // CycleType {
+    //     edge_partition: vec![(1, true), (7, true)],
+    //     corner_partition: vec![(1, true), (5, true)],
+    // }
+    // CycleType {
+    //     edge_partition: vec![(1, true), (7, true)],
+    //     corner_partition: vec![(1, true), (3, true)],
+    // }
+
+    let tag = "halfcorners2".to_string();
     generate_pruning_table_corners(&tag, &cycle_type);
     // loop {
     //     let mut input = String::new();

@@ -13,17 +13,10 @@
 pub mod cube;
 pub mod parser;
 pub mod pruning;
-pub mod solver;
 pub mod puzzle;
+pub mod solver;
 
 pub struct CycleType<T> {
-    partition: Vec<(T, bool)>,
-}
-
-impl<T> CycleType<T> {
-    pub fn from(partition: Vec<(T, bool)>) -> Self {
-        Self {
-            partition,
-        }
-    }
+    pub corner_partition: Vec<(T, bool)>,
+    pub edge_partition: Vec<(T, bool)>,
 }

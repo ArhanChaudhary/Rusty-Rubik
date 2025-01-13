@@ -34,7 +34,7 @@ impl<'a> IDASolver<'a> {
             start_state,
             pruning_tables,
             target_cycle_type,
-            multi_bv: vec![0_u8; 8],
+            multi_bv: vec![0_u8; 12],
         }
     }
 
@@ -49,9 +49,7 @@ impl<'a> IDASolver<'a> {
         let f = g + last_h;
         if f > bound {
             SearchResult::NewBound(f)
-        } else if last_state
-            .induces_corner_cycle_type(&self.target_cycle_type, self.multi_bv.as_mut())
-        {
+        } else if last_state.induces_cycle_type(&self.target_cycle_type, self.multi_bv.as_mut()) {
             // yay it's solved!
             SearchResult::Found
         } else {

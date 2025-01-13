@@ -334,10 +334,11 @@ fn get_index_of_orientation(ori: &[i8], num_orientations: u8) -> u16 {
     result
 }
 
-pub fn induces_cycle_type(
+pub fn induces_oriented_partition(
     perm: &[u8],
     ori: &[i8],
-    cycle_type: &CycleType<u8>,
+    // cycle_type: &CycleType<u8>,
+    partition: &[(u8, bool)],
     multi_bv: &mut [u8],
 ) -> bool {
     // TODO: get this working for any piece orbit
@@ -365,7 +366,7 @@ pub fn induces_cycle_type(
         if actual_cycle_length == 1 && !actual_orients {
             continue;
         }
-        let Some(valid_cycle_index) = cycle_type.partition.iter().enumerate().position(
+        let Some(valid_cycle_index) = partition.iter().enumerate().position(
             |(j, &(expected_cycle_length, expected_orients))| {
                 expected_cycle_length == actual_cycle_length
                     && expected_orients == actual_orients
@@ -377,11 +378,11 @@ pub fn induces_cycle_type(
         multi_bv[valid_cycle_index] |= 2;
         covered_cycles_count += 1;
         // cannot possibly return true if this runs
-        if covered_cycles_count > cycle_type.partition.len() {
+        if covered_cycles_count > partition.len() {
             return false;
         }
     }
-    covered_cycles_count == cycle_type.partition.len()
+    covered_cycles_count == partition.len()
 }
 
 impl CubeState {
@@ -428,12 +429,9 @@ impl CubeState {
         cp_index * u32::pow(3, 7) + (co_index as u32)
     }
 
-    pub fn induces_corner_cycle_type(
-        &self,
-        cycle_type: &CycleType<u8>,
-        multi_bv: &mut [u8],
-    ) -> bool {
-        induces_cycle_type(&self.cp, &self.co, cycle_type, multi_bv)
+    pub fn induces_cycle_type(&self, cycle_type: &CycleType<u8>, multi_bv: &mut [u8]) -> bool {
+        induces_oriented_partition(&self.cp, &self.co, &cycle_type.corner_partition, multi_bv)
+            && induces_oriented_partition(&self.ep, &self.eo, &cycle_type.edge_partition, multi_bv)
     }
 }
 
@@ -543,92 +541,131 @@ mod tests {
         let parsed_seq = parser::parse_scramble(scramble).unwrap();
         let seq = MoveSequence(parsed_seq);
         let state = CubeState::default().apply_move_instances(&seq);
-        state.induces_corner_cycle_type(&cycle_type, multi_bv)
+        state.induces_cycle_type(&cycle_type, multi_bv)
     }
 
     #[test]
     fn test_induces_cycle_type_all_orients() {
         // we can guarantee the partition length will never be greater than the number of pieces in the orbit
-        let mut multi_bv = vec![0_u8; 8];
+        let mut multi_bv = vec![0_u8; 12];
         assert!(induces_corner_cycle_type(
             "F2 L' U2 F U F U L' B U' F' U D2 L F2 B'",
-            CycleType::from(vec![(1, true), (3, true)]),
+            CycleType {
+                edge_partition: vec![],
+                corner_partition: vec![(1, true), (3, true)]
+            },
             &mut multi_bv
         ));
 
         assert!(induces_corner_cycle_type(
             "F2 L' U2 F2 U L' U' F' U2 B D2 L F2 B'",
-            CycleType::from(vec![(1, true), (1, true), (3, true)]),
+            CycleType {
+                edge_partition: vec![],
+                corner_partition: vec![(1, true), (1, true), (3, true)]
+            },
             &mut multi_bv
         ));
 
         assert!(induces_corner_cycle_type(
             "U2 L B L2 F U2 B' U2 R U' F R' F' R F' L' U2",
-            CycleType::from(vec![(1, true), (5, true)]),
+            CycleType {
+                edge_partition: vec![],
+                corner_partition: vec![(1, true), (5, true)]
+            },
             &mut multi_bv
         ));
 
         assert!(induces_corner_cycle_type(
             "R' U2 R' U2 F' D' L F L2 F U2 F2 D' L' D2 F R2",
-            CycleType::from(vec![(1, true), (3, true)]),
+            CycleType {
+                edge_partition: vec![],
+                corner_partition: vec![(1, true), (3, true)]
+            },
             &mut multi_bv
         ));
 
         assert!(induces_corner_cycle_type(
             "B2 U' B' D B' L' D' B U' R2 B2 R U B2 R B' R U",
-            CycleType::from(vec![(1, true), (1, true), (3, true)]),
+            CycleType {
+                edge_partition: vec![],
+                corner_partition: vec![(1, true), (1, true), (3, true)]
+            },
             &mut multi_bv
         ));
 
         assert!(induces_corner_cycle_type(
             "R2 L2 D' B L2 D' B L' B D2 R2 B2 R' D' B2 L2 U'",
-            CycleType::from(vec![(2, true), (3, true)]),
+            CycleType {
+                edge_partition: vec![],
+                corner_partition: vec![(2, true), (3, true)]
+            },
             &mut multi_bv
         ));
 
         assert!(induces_corner_cycle_type(
             "F' B2 R L U2 B U2 L2 F2 U R L B' L' D' R' D' B'",
-            CycleType::from(vec![(1, true), (2, true), (3, true)]),
+            CycleType {
+                edge_partition: vec![],
+                corner_partition: vec![(1, true), (2, true), (3, true)]
+            },
             &mut multi_bv
         ));
 
         assert!(induces_corner_cycle_type(
             "L' D2 F B2 U F' L2 B R F2 D R' L F R' F' D",
-            CycleType::from(vec![(2, true), (3, true)]),
+            CycleType {
+                edge_partition: vec![],
+                corner_partition: vec![(2, true), (3, true)]
+            },
             &mut multi_bv
         ));
 
         assert!(induces_corner_cycle_type(
             "B' L' F2 R U' R2 F' L2 F R' L B L' U' F2 U' D2 L",
-            CycleType::from(vec![(1, true), (2, true), (3, true)]),
+            CycleType {
+                edge_partition: vec![],
+                corner_partition: vec![(1, true), (2, true), (3, true)]
+            },
             &mut multi_bv
         ));
     }
 
     #[test]
     fn test_induces_cycle_type_mixed_orients() {
-        let mut multi_bv = vec![0_u8; 8];
+        let mut multi_bv = vec![0_u8; 12];
         assert!(induces_corner_cycle_type(
             "F2 D2 L' F D R2 F2 U2 L2 F R' B2 D2 R2 U R2 U",
-            CycleType::from(vec![(1, true), (2, false), (3, true)]),
+            CycleType {
+                edge_partition: vec![],
+                corner_partition: vec![(1, true), (2, false), (3, true)]
+            },
             &mut multi_bv
         ));
 
         assert!(induces_corner_cycle_type(
             "F2 B' R' F' L' D B' U' F U B' U2 D L' F' L' B R2",
-            CycleType::from(vec![(1, true), (2, false), (3, true)]),
+            CycleType {
+                edge_partition: vec![],
+                corner_partition: vec![(1, true), (2, false), (3, true)]
+            },
             &mut multi_bv
         ));
 
         assert!(induces_corner_cycle_type(
             "U L U L2 U2 B2",
-            CycleType::from(vec![(1, true), (2, false), (3, true)]),
+            CycleType {
+                edge_partition: vec![],
+                corner_partition: vec![(1, true), (2, false), (3, true)]
+            },
             &mut multi_bv
         ));
 
         assert!(induces_corner_cycle_type(
             "U",
-            CycleType::from(vec![(4, false)]),
+            CycleType {
+                edge_partition: vec![],
+                corner_partition: vec![(4, false)]
+            },
             &mut multi_bv
         ));
     }

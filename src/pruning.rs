@@ -141,7 +141,7 @@ pub fn generate_pruning_table_corners(tag: &str, cycle_type: &CycleType<u8>) {
 
     let cubies: u8 = 8;
     let orientation_count: i8 = 3;
-    let mut multi_bv = vec![0_u8; 8];
+    let mut multi_bv = vec![0_u8; 12];
     for (cp_index, cp) in (0..cubies).permutations(cubies as usize).enumerate() {
         for (co_index, co) in repeat_n(0..orientation_count, cubies as usize)
             .multi_cartesian_product()
@@ -149,7 +149,12 @@ pub fn generate_pruning_table_corners(tag: &str, cycle_type: &CycleType<u8>) {
             .filter(|p| p.iter().sum::<i8>().rem_euclid(orientation_count) == 0)
             .enumerate()
         {
-            if cube::induces_cycle_type(&cp, &co, cycle_type, &mut multi_bv) {
+            if cube::induces_oriented_partition(
+                &cp,
+                &co,
+                &cycle_type.corner_partition,
+                &mut multi_bv,
+            ) {
                 goal_states.push(CubeState::from_corners(
                     cp.clone().try_into().unwrap(),
                     co.try_into().unwrap(),
@@ -161,7 +166,7 @@ pub fn generate_pruning_table_corners(tag: &str, cycle_type: &CycleType<u8>) {
     // TODO: bfs instead
     iddfs(
         &goal_states,
-        3,
+        5,
         &mut table,
         &|state: &CubeState| {
             // let (corner, _, _) = state.state_index();
