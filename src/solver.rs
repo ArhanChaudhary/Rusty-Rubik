@@ -1,6 +1,6 @@
 //! Contains utility methods of various puzzle solving methods.
 //!
-//! Includes A* search and iterative deepening A* (IDA*).
+//! Includes iterative deepening A* (IDA*).
 
 use crate::pruning::PruningTables;
 use crate::{cube::*, CycleType};

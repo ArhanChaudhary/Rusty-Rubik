@@ -75,36 +75,11 @@ fn iddfs(
         for goal_state in goal_states {
             iddfs_search(goal_state, d, d, bv, 0, &prop_func);
         }
-    }
-}
-
-fn fill_pruning_table(
-    curr_state: &CubeState,
-    original_depth: u8,
-    bv: &mut [u8],
-    allowed_moves: u8,
-    prop_func: &dyn Fn(&CubeState) -> usize,
-    inv_prop_func: &dyn Fn(usize) -> CubeState,
-) {
-    for d in 0..original_depth {
-        if d == 0 {
-            // in this case all entries are zero, so manually take the solved state
-        }
-        for i in 0..bv.len() {
-            if (original_depth == 1 && i == 0) || bv[i] == original_depth - 1 {
-                let new_cube_state = inv_prop_func(i);
-                for m in ALL_MOVES
-                    .iter()
-                    .filter(|mo| (1 << get_basemove_pos(mo.basemove)) & allowed_moves == 0)
-                {
-                    let new_state = curr_state.apply_move_instance(m);
-                    let index = prop_func(&new_state);
-                    if index > 0 && bv[index] != 0 && bv[index] < original_depth - 1 {
-                        continue;
-                    }
-                }
-            }
-        }
+        println!(
+            "{} entries remaining at depth {}",
+            bv.iter().filter(|&&x| x == 0).count(),
+            d
+        );
     }
 }
 
@@ -168,39 +143,3 @@ pub fn generate_pruning_table_corners(filename: String) {
     );
     write_table(&table, filename);
 }
-
-// Generates a pruning table for the edge orientation of a Rubik's Cube.
-// pub fn generate_pruning_table_eo(filename: String) -> bool {
-//     let solved = CubeState::default();
-//     let mut table = vec![0_u8; 2048];
-//     iddfs(
-//         &solved,
-//         8,
-//         &mut table,
-//         &|state| {
-//             let (_, index, _) = get_index_of_state(state);
-//             index as usize
-//         },
-//         String::from("EO"),
-//     );
-//     write_table(&table, filename);
-//     true
-// }
-
-// /// Generates a pruning table for the edge permutation of a Rubik's Cube.
-// pub fn generate_pruning_table_ep(filename: String) -> bool {
-//     let solved = CubeState::default();
-//     let mut table = vec![0_u8; 479001600];
-//     iddfs(
-//         &solved,
-//         9,
-//         &mut table,
-//         &|state| {
-//             let (_, _, index) = get_index_of_state(state);
-//             index as usize
-//         },
-//         String::from("EP"),
-//     );
-//     write_table(&table, filename);
-//     true
-// }

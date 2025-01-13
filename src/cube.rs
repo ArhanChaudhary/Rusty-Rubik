@@ -491,9 +491,9 @@ mod tests {
 
     #[test]
     fn test_custom_permutation_index() {
-        for n in 1..=10 {
-            for (i, p) in (0..n).permutations(n as usize).enumerate() {
-                let left = get_index_of_permutation(p.as_slice());
+        for cubies in 1..=10 {
+            for (i, perm) in (0..cubies).permutations(cubies as usize).enumerate() {
+                let left = get_index_of_permutation(&perm);
                 let right = i as u32;
 
                 assert_eq!(left, right);
@@ -504,79 +504,85 @@ mod tests {
     #[test]
     fn test_custom_orientation_index() {
         let k = 8;
-        for n in 1..=6 {
-            for (i, p) in repeat_n(0..n, k - 1).multi_cartesian_product().enumerate() {
-                let left = get_index_of_orientation(p.as_slice(), n as u8);
-                let right = (i / n as usize) as u16;
+        for orientation_count in 1..=4 {
+            for (i, orients) in repeat_n(0..orientation_count, k)
+                .multi_cartesian_product()
+                .filter(|p| p.iter().sum::<i8>().rem_euclid(orientation_count) == 0)
+                .enumerate()
+            {
+                let left = get_index_of_orientation(&orients, orientation_count as u8);
+                let right = i as u16;
                 assert_eq!(left, right);
             }
         }
     }
 
-    macro_rules! induces_corner_cycle_type {
-        ($scramble:tt, $cycle_type:expr, $multi_bv:expr) => {{
-            let parsed_seq = parser::parse_scramble($scramble).unwrap();
-            let seq = MoveSequence(parsed_seq);
-            let state = CubeState::default().apply_move_instances(&seq);
-            state.induces_corner_cycle_type(&$cycle_type, $multi_bv)
-        }};
+    fn induces_corner_cycle_type(
+        scramble: &str,
+        cycle_type: CycleType<u8>,
+        multi_bv: &mut [u8],
+    ) -> bool {
+        let parsed_seq = parser::parse_scramble(scramble).unwrap();
+        let seq = MoveSequence(parsed_seq);
+        let state = CubeState::default().apply_move_instances(&seq);
+        state.induces_corner_cycle_type(&cycle_type, multi_bv)
     }
 
     #[test]
     fn test_induces_cycle_type_all_orients() {
         // we can guarantee the partition length will never be greater than the number of pieces in the orbit
         let mut multi_bv = vec![0_u8; 8];
-        assert!(induces_corner_cycle_type!(
+        assert!(induces_corner_cycle_type(
             "F2 L' U2 F U F U L' B U' F' U D2 L F2 B'",
             CycleType::from(vec![(1, true), (3, true)]),
             &mut multi_bv
         ));
 
-        assert!(induces_corner_cycle_type!(
+        assert!(induces_corner_cycle_type(
             "F2 L' U2 F2 U L' U' F' U2 B D2 L F2 B'",
-            &CycleType::from(vec![(1, true), (1, true), (3, true)]),
+            CycleType::from(vec![(1, true), (1, true), (3, true)]),
             &mut multi_bv
         ));
 
-        assert!(induces_corner_cycle_type!(
+        assert!(induces_corner_cycle_type(
             "U2 L B L2 F U2 B' U2 R U' F R' F' R F' L' U2",
-            &CycleType::from(vec![(1, true), (5, true)]),
+            CycleType::from(vec![(1, true), (5, true)]),
             &mut multi_bv
         ));
 
-        assert!(induces_corner_cycle_type!(
+        assert!(induces_corner_cycle_type(
             "R' U2 R' U2 F' D' L F L2 F U2 F2 D' L' D2 F R2",
-            &CycleType::from(vec![(1, true), (3, true)]),
+            CycleType::from(vec![(1, true), (3, true)]),
             &mut multi_bv
         ));
 
-        assert!(induces_corner_cycle_type!(
+        assert!(induces_corner_cycle_type(
             "B2 U' B' D B' L' D' B U' R2 B2 R U B2 R B' R U",
-            &CycleType::from(vec![(1, true), (1, true), (3, true)]),
+            CycleType::from(vec![(1, true), (1, true), (3, true)]),
             &mut multi_bv
         ));
 
-        assert!(induces_corner_cycle_type!(
+        assert!(induces_corner_cycle_type(
             "R2 L2 D' B L2 D' B L' B D2 R2 B2 R' D' B2 L2 U'",
-            &CycleType::from(vec![(2, true), (3, true)]),
+            CycleType::from(vec![(2, true), (3, true)]),
             &mut multi_bv
         ));
 
-        assert!(induces_corner_cycle_type!(
+        assert!(induces_corner_cycle_type(
             "F' B2 R L U2 B U2 L2 F2 U R L B' L' D' R' D' B'",
-            &CycleType::from(vec![(1, true), (2, true), (3, true)]),
+            CycleType::from(vec![(1, true), (2, true), (3, true)]),
             &mut multi_bv
         ));
 
-        assert!(induces_corner_cycle_type!(
+        assert!(induces_corner_cycle_type(
             "L' D2 F B2 U F' L2 B R F2 D R' L F R' F' D",
-            &CycleType::from(vec![(2, true), (3, true)]),
+            CycleType::from(vec![(2, true), (3, true)]),
             &mut multi_bv
         ));
 
-        assert!(induces_corner_cycle_type!(
+        assert!(induces_corner_cycle_type(
             "B' L' F2 R U' R2 F' L2 F R' L B L' U' F2 U' D2 L",
-            &CycleType::from(vec![(1, true), (2, true), (3, true)]),
+            CycleType::from(vec![(1, true), (2, true), (3, true)]),
             &mut multi_bv
         ));
     }
@@ -584,21 +590,21 @@ mod tests {
     #[test]
     fn test_induces_cycle_type_mixed_orients() {
         let mut multi_bv = vec![0_u8; 8];
-        assert!(induces_corner_cycle_type!(
+        assert!(induces_corner_cycle_type(
             "F2 D2 L' F D R2 F2 U2 L2 F R' B2 D2 R2 U R2 U",
-            &CycleType::from(vec![(1, true), (2, false), (3, true)]),
+            CycleType::from(vec![(1, true), (2, false), (3, true)]),
             &mut multi_bv
         ));
 
-        assert!(induces_corner_cycle_type!(
+        assert!(induces_corner_cycle_type(
             "F2 B' R' F' L' D B' U' F U B' U2 D L' F' L' B R2",
-            &CycleType::from(vec![(1, true), (2, false), (3, true)]),
+            CycleType::from(vec![(1, true), (2, false), (3, true)]),
             &mut multi_bv
         ));
 
-        assert!(induces_corner_cycle_type!(
+        assert!(induces_corner_cycle_type(
             "U",
-            &CycleType::from(vec![(4, false)]),
+            CycleType::from(vec![(4, false)]),
             &mut multi_bv
         ));
     }
