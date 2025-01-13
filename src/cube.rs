@@ -621,6 +621,12 @@ mod tests {
         ));
 
         assert!(induces_corner_cycle_type(
+            "U L U L2 U2 B2",
+            CycleType::from(vec![(1, true), (2, false), (3, true)]),
+            &mut multi_bv
+        ));
+
+        assert!(induces_corner_cycle_type(
             "U",
             CycleType::from(vec![(4, false)]),
             &mut multi_bv

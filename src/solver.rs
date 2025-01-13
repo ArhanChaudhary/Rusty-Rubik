@@ -30,12 +30,11 @@ impl<'a> IDASolver<'a> {
         pruning_tables: &'a PruningTables,
         target_cycle_type: CycleType<u8>,
     ) -> Self {
-        let multi_bv = vec![0_u8; 8];
         Self {
             start_state,
             pruning_tables,
             target_cycle_type,
-            multi_bv,
+            multi_bv: vec![0_u8; 8],
         }
     }
 

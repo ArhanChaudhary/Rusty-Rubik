@@ -36,8 +36,8 @@ pub struct PruningTables {
 impl PruningTables {
     /// Reads the default pruning tables from the default
     /// file names.
-    pub fn default_tables() -> Self {
-        let corners = std::fs::read("corners.pt").unwrap();
+    pub fn from(tag: &str) -> Self {
+        let corners = std::fs::read(tag.to_string() + ".pt").unwrap();
         // let edges_o = std::fs::read("edges_o.pt").unwrap();
         // let edges_p = std::fs::read("edges_p.pt").unwrap();
         PruningTables {
@@ -67,9 +67,10 @@ impl PruningTables {
 /// A wrapper function around the main logic of IDDFS.
 fn iddfs(
     goal_states: &[CubeState],
+    max_depth: u8,
     bv: &mut [u8],
     prop_func: &dyn Fn(&CubeState) -> usize,
-    tag: String,
+    tag: &str,
 ) {
     let mut depth = 1;
     loop {
@@ -83,7 +84,7 @@ fn iddfs(
             bv.iter().filter(|&&x| x == 0).count(),
             depth
         );
-        if remaining == 0 {
+        if remaining == 0 || depth == max_depth {
             break;
         }
         depth += 1;
@@ -135,7 +136,7 @@ fn write_table(table: &[u8], filename: String) {
 }
 
 /// Generates a pruning table for the corners of a Rubik's Cube.
-pub fn generate_pruning_table_corners(filename: String, cycle_type: &CycleType<u8>) {
+pub fn generate_pruning_table_corners(tag: &str, cycle_type: &CycleType<u8>) {
     let mut goal_states = vec![];
 
     let cubies: u8 = 8;
@@ -144,6 +145,7 @@ pub fn generate_pruning_table_corners(filename: String, cycle_type: &CycleType<u
     for (cp_index, cp) in (0..cubies).permutations(cubies as usize).enumerate() {
         for (co_index, co) in repeat_n(0..orientation_count, cubies as usize)
             .multi_cartesian_product()
+            // TODO more efficient way than filtering
             .filter(|p| p.iter().sum::<i8>().rem_euclid(orientation_count) == 0)
             .enumerate()
         {
@@ -156,15 +158,17 @@ pub fn generate_pruning_table_corners(filename: String, cycle_type: &CycleType<u
         }
     }
     let mut table = vec![0_u8; 88179840];
+    // TODO: bfs instead
     iddfs(
         &goal_states,
+        3,
         &mut table,
         &|state: &CubeState| {
             // let (corner, _, _) = state.state_index();
             // corner as usize
             state.corner_state_index() as usize
         },
-        String::from("corners"),
+        tag,
     );
-    write_table(&table, filename);
+    write_table(&table, tag.to_string() + ".pt");
 }
