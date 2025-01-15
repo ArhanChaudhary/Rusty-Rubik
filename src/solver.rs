@@ -2,8 +2,9 @@
 //!
 //! Includes iterative deepening A* (IDA*).
 
+use crate::cube::{CubeState, MoveSequence};
 use crate::pruning::PruningTables;
-use crate::{cube::*, CycleType};
+use crate::{cube, CycleType};
 
 /**
  * A solver implementing the iterative deepening A* search algorithm [Korf, 1997].
@@ -34,7 +35,7 @@ impl<'a> IDASolver<'a> {
             start_state,
             pruning_tables,
             target_cycle_type,
-            multi_bv: vec![0_u8; 12],
+            multi_bv: vec![0; std::cmp::max(cube::EDGES, cube::CORNERS)],
         }
     }
 
@@ -55,9 +56,9 @@ impl<'a> IDASolver<'a> {
         } else {
             let mut min = u8::MAX;
             let allowed_moves = curr_path.allowed_moves_after_seq();
-            for m in ALL_MOVES
+            for m in cube::ALL_MOVES
                 .iter()
-                .filter(|mo| ((1 << get_basemove_pos(mo.basemove)) & allowed_moves) == 0)
+                .filter(|mo| ((1 << cube::get_basemove_pos(mo.basemove)) & allowed_moves) == 0)
             {
                 if !curr_path.is_empty() {
                     let last_move = curr_path[curr_path.len() - 1];

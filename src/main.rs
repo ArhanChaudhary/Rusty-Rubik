@@ -2,12 +2,17 @@ use rusty_rubik::cube::CubeState;
 use rusty_rubik::pruning::*;
 use rusty_rubik::solver::IDASolver;
 use rusty_rubik::CycleType;
+use std::time::Instant;
 
 fn main() {
     let cycle_type = CycleType {
-        edge_partition: vec![(1, true), (5, true)],
-        corner_partition: vec![(1, true), (3, true)],
+        edge_partition: vec![(1, true), (4, true), (5, false)],
+        corner_partition: vec![(1, true), (2, false), (3, true)],
     };
+    // let cycle_type = CycleType {
+    //     edge_partition: vec![(1, true), (5, true)],
+    //     corner_partition: vec![(1, true), (3, true)],
+    // };
     // CycleType {
     //     edge_partition: vec![(1, true), (5, true)],
     //     corner_partition: vec![(1, true), (1, true), (3, true)],
@@ -21,27 +26,15 @@ fn main() {
     //     corner_partition: vec![(1, true), (3, true)],
     // }
 
-    let tag = "halfcorners2".to_string();
-    generate_pruning_table_corners(&tag, &cycle_type);
-    // loop {
-    //     let mut input = String::new();
-    //     std::io::stdin().read_line(&mut input).unwrap();
-    //     let input = input.trim();
-    //     if input == "exit" {
-    //         return;
-    //     }
-    //     let Ok(scramble) = parser::parse_scramble(input) else {
-    //         continue;
-    //     };
-    //     let scramble = cube::MoveSequence::from(scramble);
-    //     let solved = cube::CubeState::default();
-    //     let twisted = solved.apply_move_instances(&scramble);
-    //     println!("Twisted state: {:?}", twisted);
-    // }
-
-    // // load the pruning tables
+    let mut tag = "corners".to_string();
+    for &(corner, orient) in cycle_type.corner_partition.iter() {
+        tag.push_str(&format!("{}{}", corner, if orient { "o" } else { "n" }));
+    }
     let pruning_tables = PruningTables::from(&tag);
+    let now = Instant::now();
     let mut solver = IDASolver::new(CubeState::default(), &pruning_tables, cycle_type);
     let solution = solver.solve();
+    let elapsed = now.elapsed();
     println!("{}", solution);
+    println!("Elapsed: {:.2?}", elapsed);
 }

@@ -159,6 +159,9 @@ impl DerefMut for MoveSequence {
     }
 }
 
+pub const EDGES: usize = 12;
+pub const CORNERS: usize = 8;
+
 /// An internal set of permutation vectors representing what action
 /// is done to a configuration of the Rubik's Cube when a move is applied.
 ///
@@ -166,10 +169,10 @@ impl DerefMut for MoveSequence {
 /// - Corners: UBL UBR UFR UFL DFL DFR DBR DBL
 /// - Edges: UB UR UF UL BL BR FR FL DF DR DB DL
 struct Move {
-    cp_change: [u8; 8], // a[i] gives the position that i goes to
-    co_change: [i8; 8],
-    ep_change: [u8; 12],
-    eo_change: [i8; 12],
+    cp_change: [u8; CORNERS], // a[i] gives the position that i goes to
+    co_change: [i8; CORNERS],
+    ep_change: [u8; EDGES],
+    eo_change: [i8; EDGES],
 }
 
 /// A shorthand macro that can be used to construct MoveInstances.
@@ -262,19 +265,35 @@ pub(crate) fn get_allowed_post_moves(prev_bv: u8, last_move: Option<BaseMoveToke
 /// The underlying struct for representing a configuration of the Rubik's Cube.
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct CubeState {
-    cp: [u8; 8],
-    co: [i8; 8],
-    ep: [u8; 12],
-    eo: [i8; 12],
+    cp: [u8; CORNERS],
+    co: [i8; CORNERS],
+    ep: [u8; EDGES],
+    eo: [i8; EDGES],
 }
 
 impl Default for CubeState {
     fn default() -> CubeState {
         CubeState {
-            cp: [0, 1, 2, 3, 4, 5, 6, 7],
-            co: [0_i8; 8],
-            ep: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-            eo: [0_i8; 12],
+            cp: const {
+                let mut arr = [0; CORNERS];
+                let mut i = 0;
+                while i < CORNERS {
+                    arr[i] = i as u8;
+                    i += 1;
+                }
+                arr
+            },
+            co: [0_i8; CORNERS],
+            ep: const {
+                let mut arr = [0; EDGES];
+                let mut i = 0;
+                while i < EDGES {
+                    arr[i] = i as u8;
+                    i += 1;
+                }
+                arr
+            },
+            eo: [0_i8; EDGES],
         }
     }
 }
@@ -386,7 +405,7 @@ pub fn induces_oriented_partition(
 }
 
 impl CubeState {
-    pub fn from_corners(cp: [u8; 8], co: [i8; 8]) -> Self {
+    pub fn from_corners(cp: [u8; CORNERS], co: [i8; CORNERS]) -> Self {
         CubeState {
             cp,
             co,
@@ -429,8 +448,16 @@ impl CubeState {
         cp_index * u32::pow(3, 7) + (co_index as u32)
     }
 
-    pub fn induces_cycle_type(&self, cycle_type: &CycleType<u8>, multi_bv: &mut [u8]) -> bool {
+    pub fn induces_corner_cycle_type(
+        &self,
+        cycle_type: &CycleType<u8>,
+        multi_bv: &mut [u8],
+    ) -> bool {
         induces_oriented_partition(&self.cp, &self.co, &cycle_type.corner_partition, multi_bv)
+    }
+
+    pub fn induces_cycle_type(&self, cycle_type: &CycleType<u8>, multi_bv: &mut [u8]) -> bool {
+        self.induces_corner_cycle_type(cycle_type, multi_bv)
             && induces_oriented_partition(&self.ep, &self.eo, &cycle_type.edge_partition, multi_bv)
     }
 }
@@ -502,7 +529,7 @@ const MOVE_B: Move = Move {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser;
+    use crate::{cube, parser};
     use itertools::{repeat_n, Itertools};
 
     #[test]
@@ -541,18 +568,18 @@ mod tests {
         let parsed_seq = parser::parse_scramble(scramble).unwrap();
         let seq = MoveSequence(parsed_seq);
         let state = CubeState::default().apply_move_instances(&seq);
-        state.induces_cycle_type(&cycle_type, multi_bv)
+        state.induces_corner_cycle_type(&cycle_type, multi_bv)
     }
 
     #[test]
     fn test_induces_cycle_type_all_orients() {
         // we can guarantee the partition length will never be greater than the number of pieces in the orbit
-        let mut multi_bv = vec![0_u8; 12];
+        let mut multi_bv = vec![0_u8; EDGES.max(CORNERS)];
         assert!(induces_corner_cycle_type(
             "F2 L' U2 F U F U L' B U' F' U D2 L F2 B'",
             CycleType {
-                edge_partition: vec![],
-                corner_partition: vec![(1, true), (3, true)]
+                corner_partition: vec![(1, true), (3, true)],
+                ..Default::default()
             },
             &mut multi_bv
         ));
@@ -560,8 +587,8 @@ mod tests {
         assert!(induces_corner_cycle_type(
             "F2 L' U2 F2 U L' U' F' U2 B D2 L F2 B'",
             CycleType {
-                edge_partition: vec![],
-                corner_partition: vec![(1, true), (1, true), (3, true)]
+                corner_partition: vec![(1, true), (1, true), (3, true)],
+                ..Default::default()
             },
             &mut multi_bv
         ));
@@ -569,8 +596,8 @@ mod tests {
         assert!(induces_corner_cycle_type(
             "U2 L B L2 F U2 B' U2 R U' F R' F' R F' L' U2",
             CycleType {
-                edge_partition: vec![],
-                corner_partition: vec![(1, true), (5, true)]
+                corner_partition: vec![(1, true), (5, true)],
+                ..Default::default()
             },
             &mut multi_bv
         ));
@@ -578,8 +605,8 @@ mod tests {
         assert!(induces_corner_cycle_type(
             "R' U2 R' U2 F' D' L F L2 F U2 F2 D' L' D2 F R2",
             CycleType {
-                edge_partition: vec![],
-                corner_partition: vec![(1, true), (3, true)]
+                corner_partition: vec![(1, true), (3, true)],
+                ..Default::default()
             },
             &mut multi_bv
         ));
@@ -587,8 +614,8 @@ mod tests {
         assert!(induces_corner_cycle_type(
             "B2 U' B' D B' L' D' B U' R2 B2 R U B2 R B' R U",
             CycleType {
-                edge_partition: vec![],
-                corner_partition: vec![(1, true), (1, true), (3, true)]
+                corner_partition: vec![(1, true), (1, true), (3, true)],
+                ..Default::default()
             },
             &mut multi_bv
         ));
@@ -596,8 +623,8 @@ mod tests {
         assert!(induces_corner_cycle_type(
             "R2 L2 D' B L2 D' B L' B D2 R2 B2 R' D' B2 L2 U'",
             CycleType {
-                edge_partition: vec![],
-                corner_partition: vec![(2, true), (3, true)]
+                corner_partition: vec![(2, true), (3, true)],
+                ..Default::default()
             },
             &mut multi_bv
         ));
@@ -605,8 +632,8 @@ mod tests {
         assert!(induces_corner_cycle_type(
             "F' B2 R L U2 B U2 L2 F2 U R L B' L' D' R' D' B'",
             CycleType {
-                edge_partition: vec![],
-                corner_partition: vec![(1, true), (2, true), (3, true)]
+                corner_partition: vec![(1, true), (2, true), (3, true)],
+                ..Default::default()
             },
             &mut multi_bv
         ));
@@ -614,8 +641,8 @@ mod tests {
         assert!(induces_corner_cycle_type(
             "L' D2 F B2 U F' L2 B R F2 D R' L F R' F' D",
             CycleType {
-                edge_partition: vec![],
-                corner_partition: vec![(2, true), (3, true)]
+                corner_partition: vec![(2, true), (3, true)],
+                ..Default::default()
             },
             &mut multi_bv
         ));
@@ -623,8 +650,8 @@ mod tests {
         assert!(induces_corner_cycle_type(
             "B' L' F2 R U' R2 F' L2 F R' L B L' U' F2 U' D2 L",
             CycleType {
-                edge_partition: vec![],
-                corner_partition: vec![(1, true), (2, true), (3, true)]
+                corner_partition: vec![(1, true), (2, true), (3, true)],
+                ..Default::default()
             },
             &mut multi_bv
         ));
@@ -632,12 +659,12 @@ mod tests {
 
     #[test]
     fn test_induces_cycle_type_mixed_orients() {
-        let mut multi_bv = vec![0_u8; 12];
+        let mut multi_bv = vec![0_u8; cube::CORNERS.max(cube::EDGES)];
         assert!(induces_corner_cycle_type(
             "F2 D2 L' F D R2 F2 U2 L2 F R' B2 D2 R2 U R2 U",
             CycleType {
-                edge_partition: vec![],
-                corner_partition: vec![(1, true), (2, false), (3, true)]
+                corner_partition: vec![(1, true), (2, false), (3, true)],
+                ..Default::default()
             },
             &mut multi_bv
         ));
@@ -645,8 +672,8 @@ mod tests {
         assert!(induces_corner_cycle_type(
             "F2 B' R' F' L' D B' U' F U B' U2 D L' F' L' B R2",
             CycleType {
-                edge_partition: vec![],
-                corner_partition: vec![(1, true), (2, false), (3, true)]
+                corner_partition: vec![(1, true), (2, false), (3, true)],
+                ..Default::default()
             },
             &mut multi_bv
         ));
@@ -654,8 +681,8 @@ mod tests {
         assert!(induces_corner_cycle_type(
             "U L U L2 U2 B2",
             CycleType {
-                edge_partition: vec![],
-                corner_partition: vec![(1, true), (2, false), (3, true)]
+                corner_partition: vec![(1, true), (2, false), (3, true)],
+                ..Default::default()
             },
             &mut multi_bv
         ));
@@ -663,8 +690,8 @@ mod tests {
         assert!(induces_corner_cycle_type(
             "U",
             CycleType {
-                edge_partition: vec![],
-                corner_partition: vec![(4, false)]
+                corner_partition: vec![(4, false)],
+                ..Default::default()
             },
             &mut multi_bv
         ));

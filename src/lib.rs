@@ -16,6 +16,7 @@ pub mod pruning;
 pub mod puzzle;
 pub mod solver;
 
+#[derive(Default)]
 pub struct CycleType<T> {
     pub corner_partition: Vec<(T, bool)>,
     pub edge_partition: Vec<(T, bool)>,

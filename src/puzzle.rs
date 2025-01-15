@@ -8,6 +8,8 @@ use std::hash::Hash;
 use std::ops::{Add, Rem};
 use std::sync::LazyLock;
 
+use crate::cube;
+
 /**
 pub struct CubeState {
 }
@@ -16,10 +18,10 @@ is an example for a 3x3
 have a macro to generate these states?
 */
 
-pub trait PuzzleMove {}
+trait PuzzleMove {}
 
 /// General trait to describe a twisty puzzle.
-pub trait Puzzle {
+trait Puzzle {
     type M;
 
     // Initializes this puzzle in its solved state.
@@ -39,11 +41,11 @@ pub trait Puzzle {
 }
 
 #[derive(Clone)]
-pub struct Cube3 {
-    cp: [u8; 8],
-    co: [u8; 8],
-    ep: [u8; 12],
-    eo: [u8; 12],
+struct Cube3 {
+    cp: [u8; cube::CORNERS],
+    co: [u8; cube::CORNERS],
+    ep: [u8; cube::EDGES],
+    eo: [u8; cube::EDGES],
 }
 
 // pub struct Cube4 {
@@ -87,7 +89,7 @@ pub struct Cube3 {
 // }
 
 #[derive(Debug, EnumIter, Eq, PartialEq, Hash, Copy, Clone, FromPrimitive)]
-pub enum CubeAxis {
+enum CubeAxis {
     U,
     D,
     L,
@@ -99,7 +101,7 @@ pub enum CubeAxis {
 // rotations?
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct CubeMove {
+struct CubeMove {
     axis: u8,
     depth: u8,
     rotation: u8,
@@ -110,17 +112,33 @@ impl PuzzleMove for CubeMove {}
 impl Default for Cube3 {
     fn default() -> Self {
         Self {
-            cp: [0, 1, 2, 3, 4, 5, 6, 7],
-            co: [0_u8; 8],
-            ep: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-            eo: [0_u8; 12],
+            cp: const {
+                let mut arr = [0; cube::CORNERS];
+                let mut i = 0;
+                while i < cube::CORNERS {
+                    arr[i] = i as u8;
+                    i += 1;
+                }
+                arr
+            },
+            co: [0_u8; cube::CORNERS],
+            ep: const {
+                let mut arr = [0; cube::EDGES];
+                let mut i = 0;
+                while i < cube::CORNERS {
+                    arr[i] = i as u8;
+                    i += 1;
+                }
+                arr
+            },
+            eo: [0_u8; cube::EDGES],
         }
     }
 }
 
 // move actions?
 
-pub fn apply_permutation<T: Clone + Copy, const N: usize>(
+fn apply_permutation<T: Clone + Copy, const N: usize>(
     og_state: [T; N],
     delta: &[usize; N],
     count: u8,
@@ -134,7 +152,7 @@ pub fn apply_permutation<T: Clone + Copy, const N: usize>(
     new_array
 }
 
-pub fn apply_orientation<T: Clone + Copy + Add<Output = T> + Rem<Output = T>, const N: usize>(
+fn apply_orientation<T: Clone + Copy + Add<Output = T> + Rem<Output = T>, const N: usize>(
     og_state: [T; N],
     delta: &[T; N],
     num_orientations: T,
@@ -202,9 +220,9 @@ macro_rules! hashmap {
     };
 }
 
-static CP_DELTAS: LazyLock<HashMap<CubeAxis, [usize; 8]>> = LazyLock::new(|| {
+static CP_DELTAS: LazyLock<HashMap<CubeAxis, [usize; cube::CORNERS]>> = LazyLock::new(|| {
     hashmap! {
-        [usize; 8],
+        [usize; cube::CORNERS],
         CubeAxis::U => [1, 2, 3, 0, 4, 5, 6, 7],
         CubeAxis::D => [0, 1, 2, 3, 5, 6, 7, 4],
         CubeAxis::R => [0, 6, 1, 3, 4, 2, 5, 7],
@@ -214,9 +232,9 @@ static CP_DELTAS: LazyLock<HashMap<CubeAxis, [usize; 8]>> = LazyLock::new(|| {
     }
 });
 
-static CO_DELTAS: LazyLock<HashMap<CubeAxis, [u8; 8]>> = LazyLock::new(|| {
+static CO_DELTAS: LazyLock<HashMap<CubeAxis, [u8; cube::CORNERS]>> = LazyLock::new(|| {
     hashmap! {
-        [u8; 8],
+        [u8; cube::CORNERS],
         CubeAxis::U => [0, 0, 0, 0, 0, 0, 0, 0],
         CubeAxis::D => [0, 0, 0, 0, 0, 0, 0, 0],
         CubeAxis::R => [0, 2, 1, 0, 0, 2, 1, 0],
@@ -226,9 +244,9 @@ static CO_DELTAS: LazyLock<HashMap<CubeAxis, [u8; 8]>> = LazyLock::new(|| {
     }
 });
 
-static EP_DELTAS: LazyLock<HashMap<CubeAxis, [usize; 12]>> = LazyLock::new(|| {
+static EP_DELTAS: LazyLock<HashMap<CubeAxis, [usize; cube::EDGES]>> = LazyLock::new(|| {
     hashmap! {
-        [usize; 12],
+        [usize; cube::EDGES],
         CubeAxis::U =>[1, 2, 3, 0, 4, 5, 6, 7, 8, 9, 10, 11],
         CubeAxis::D =>[0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 8],
         CubeAxis::R =>[0, 5, 2, 3, 4, 9, 1, 7, 8, 6, 10, 11],
@@ -238,9 +256,9 @@ static EP_DELTAS: LazyLock<HashMap<CubeAxis, [usize; 12]>> = LazyLock::new(|| {
     }
 });
 
-static EO_DELTAS: LazyLock<HashMap<CubeAxis, [u8; 12]>> = LazyLock::new(|| {
+static EO_DELTAS: LazyLock<HashMap<CubeAxis, [u8; cube::EDGES]>> = LazyLock::new(|| {
     hashmap! {
-        [u8; 12],
+        [u8; cube::EDGES],
         CubeAxis::U =>[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         CubeAxis::D =>[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         CubeAxis::R =>[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
