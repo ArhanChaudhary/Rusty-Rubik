@@ -81,6 +81,7 @@ impl<'a> IDASolver<'a> {
         }
     }
 
+    // TODO: all solutions
     pub fn solve(&mut self) -> MoveSequence {
         let start_state = self.start_state.clone();
 

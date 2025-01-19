@@ -29,8 +29,6 @@ trait Puzzle {
 
     fn get_all_moves() -> HashSet<Self::M>;
 
-    // TODO: Megaminx has different scrambling and actual solving moves
-
     // Generally, for puzzles like NxN puzzles, all available moves are allowed.
     // However, for bandaging puzzles such as the Bandaged Cube and Square-1, certain
     // moves will restrict others from being allowed.
@@ -41,6 +39,7 @@ trait Puzzle {
 }
 
 #[derive(Clone)]
+// TODO: twsearch representation of state
 struct Cube3 {
     cp: [u8; cube::CORNERS],
     co: [u8; cube::CORNERS],

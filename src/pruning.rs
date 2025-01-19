@@ -11,10 +11,10 @@
 use itertools::{repeat_n, Itertools};
 
 use crate::{
-    cube::{self, *},
+    cube::{self, CubeState},
     CycleType,
 };
-use std::io::Write;
+use std::{io::Write, time::Instant};
 
 /**
  * A struct holding pruning information for certain subgroups of the
@@ -36,8 +36,9 @@ pub struct PruningTables {
 impl PruningTables {
     /// Reads the default pruning tables from the default
     /// file names.
-    pub fn from(tag: &str) -> Self {
-        let corners = std::fs::read(tag.to_string() + ".pt").unwrap();
+    pub fn from(tag: &str, cycle_type: &CycleType<u8>) -> Self {
+        let corners = std::fs::read(tag.to_string() + ".pt")
+            .unwrap_or_else(|_| generate_pruning_table_corners(tag, cycle_type));
         // let edges_o = std::fs::read("edges_o.pt").unwrap();
         // let edges_p = std::fs::read("edges_p.pt").unwrap();
         PruningTables {
@@ -64,112 +65,75 @@ impl PruningTables {
     }
 }
 
-/// A wrapper function around the main logic of IDDFS.
-fn iddfs(
-    goal_states: &[CubeState],
-    max_depth: Option<u8>,
-    bv: &mut [u8],
-    prop_func: &impl Fn(&CubeState) -> usize,
-    tag: &str,
-) {
-    let mut depth = 1;
-    loop {
-        println!("Building {} pruning table for depth {}...", tag, depth);
-        for goal_state in goal_states {
-            iddfs_search(goal_state, depth, depth, bv, 0, prop_func);
-        }
-        let remaining = bv.iter().filter(|&&x| x == 255).count();
-        println!(
-            "{} entries remaining at depth {} ({:.4}%)",
-            remaining,
-            depth,
-            1.0 - (remaining as f64 / bv.len() as f64) * 100.0
-        );
-        if remaining == 0 || Some(depth) == max_depth {
-            break;
-        }
-        depth += 1;
-    }
-    println!("Pruning table for {} generated.", tag);
-}
-
-/// Starts a depth-bounded DFS from the given state.
-fn iddfs_search(
-    state: &CubeState,
-    original_depth: u8,
-    d: u8,
-    bv: &mut [u8],
-    allowed_moves: u8,
-    prop_func: &impl Fn(&CubeState) -> usize,
-) {
-    if d == 0 {
-        // cool, we've hit the desired depth now
-        let index = prop_func(state);
-        if bv[index] == 255 {
-            bv[index] = original_depth;
-        }
-    } else {
-        for m in ALL_MOVES
-            .iter()
-            .filter(|&mo| (1 << get_basemove_pos(mo.basemove)) & allowed_moves == 0)
-        {
-            let new_state = state.apply_move_instance(m);
-            let index = prop_func(&new_state);
-            if index > 0 && bv[index] != 0 && bv[index] < original_depth - d + 1 {
-                continue;
-            }
-            let new_allowed_moves = get_allowed_post_moves(allowed_moves, Some(m.basemove));
-            iddfs_search(
-                &new_state,
-                original_depth,
-                d - 1,
-                bv,
-                new_allowed_moves,
-                prop_func,
-            );
-        }
-    }
-}
-
-fn write_table(table: &[u8], filename: String) {
+pub fn write_table(table: &[u8], filename: String) {
     let mut file = std::fs::File::create(filename).expect("Unable to create file.");
     file.write_all(table).expect("Unable to write to file.");
 }
 
 /// Generates a pruning table for the corners of a Rubik's Cube.
-pub fn generate_pruning_table_corners(tag: &str, cycle_type: &CycleType<u8>) {
-    println!("Beginning {} pruning tables generation.", tag);
+pub fn generate_pruning_table_corners(tag: &str, cycle_type: &CycleType<u8>) -> Vec<u8> {
+    let now = Instant::now();
 
     let cubies: u8 = 8;
     let orientation_count: i8 = 3;
     let mut table = vec![255_u8; 88179840];
-    let prop_func = |state: &CubeState| state.corner_state_index() as usize;
 
+    let mut depth = 0;
+    let mut remaining = table.len();
     let mut multi_bv = vec![0_u8; cube::CORNERS.max(cube::EDGES)];
-    let mut goal_states = vec![];
-    for (cp_index, cp) in (0..cubies).permutations(cubies as usize).enumerate() {
-        for (co_index, co) in repeat_n(0..orientation_count, cubies as usize)
-            .multi_cartesian_product()
-            // TODO more efficient way than filtering
-            .filter(|p| p.iter().sum::<i8>().rem_euclid(orientation_count) == 0)
-            .enumerate()
-        {
-            if cube::induces_oriented_partition(
-                &cp,
-                &co,
-                &cycle_type.corner_partition,
-                &mut multi_bv,
-            ) {
-                let goal_state =
-                    CubeState::from_corners(cp.clone().try_into().unwrap(), co.try_into().unwrap());
-                table[prop_func(&goal_state)] = 0;
-                goal_states.push(goal_state);
+    loop {
+        println!("Building {} pruning table for depth {}...", tag, depth);
+        for (cp_index, cp) in (0..cubies).permutations(cubies as usize).enumerate() {
+            for (co_index, co) in repeat_n(0..orientation_count, cubies as usize)
+                .multi_cartesian_product()
+                // TODO more efficient way than filtering
+                .filter(|p| p.iter().sum::<i8>().rem_euclid(orientation_count) == 0)
+                .enumerate()
+            {
+                let corner_state_index = cp_index * usize::pow(3, 7) + co_index;
+                if depth == 0 {
+                    if cube::induces_oriented_partition(
+                        &cp,
+                        &co,
+                        &cycle_type.corner_partition,
+                        3,
+                        &mut multi_bv,
+                    ) {
+                        // TODO: IDDFS the first few
+                        table[corner_state_index] = depth;
+                        remaining -= 1;
+                    }
+                } else if table[corner_state_index] == depth - 1 {
+                    let new_state = CubeState::from_corners(
+                        cp.clone().try_into().unwrap(),
+                        co.try_into().unwrap(),
+                    );
+                    for m in cube::ALL_MOVES.iter() {
+                        let new_index =
+                            new_state.apply_move_instance(m).corner_state_index() as usize;
+                        if table[new_index] == 255 {
+                            table[new_index] = depth;
+                            remaining -= 1;
+                        }
+                    }
+                }
             }
         }
+        println!(
+            "{} entries remaining at depth {} ({:.4}%)",
+            remaining,
+            depth,
+            (1.0 - remaining as f64 / table.len() as f64) * 100.0
+        );
+        if remaining == 0 {
+            break;
+        }
+        depth += 1;
     }
-    println!("Found {} goal states.", goal_states.len());
-    iddfs(&goal_states, None, &mut table, &prop_func, tag);
+    let elapsed = now.elapsed();
+    println!("Pruning table for {} generated in {:.2?}.", tag, elapsed);
     write_table(&table, tag.to_string() + ".pt");
+    table
 }
 
 #[cfg(test)]
@@ -178,16 +142,22 @@ mod tests {
 
     #[test]
     fn test_correct_values() {
-        let pruning_tables = PruningTables::from("corners1o2n3o");
+        let pruning_tables = PruningTables::from(
+            "corners1o2n3o",
+            &CycleType {
+                corner_partition: vec![(1, true), (2, false), (3, true)],
+                ..Default::default()
+            },
+        );
         assert_eq!(pruning_tables.corners(21458698), 3);
         assert_eq!(pruning_tables.corners(54289714), 4);
         assert_eq!(pruning_tables.corners(4817645), 2);
         assert_eq!(pruning_tables.corners(47961871), 3);
         assert_eq!(pruning_tables.corners(38768266), 3);
-        assert_eq!(pruning_tables.corners(12863314), 3);
-        assert_eq!(pruning_tables.corners(17072100), 3);
+        assert_eq!(pruning_tables.corners(12863314), 2);
+        assert_eq!(pruning_tables.corners(17072100), 2);
         assert_eq!(pruning_tables.corners(55138941), 3);
-        assert_eq!(pruning_tables.corners(16901755), 4);
+        assert_eq!(pruning_tables.corners(16901755), 3);
         assert_eq!(pruning_tables.corners(7866330), 3);
         assert_eq!(pruning_tables.corners(61897189), 3);
         assert_eq!(pruning_tables.corners(46848586), 3);
@@ -195,113 +165,113 @@ mod tests {
         assert_eq!(pruning_tables.corners(3961520), 3);
         assert_eq!(pruning_tables.corners(55522877), 2);
         assert_eq!(pruning_tables.corners(28753504), 3);
-        assert_eq!(pruning_tables.corners(69618633), 4);
-        assert_eq!(pruning_tables.corners(86892623), 3);
+        assert_eq!(pruning_tables.corners(69618633), 2);
+        assert_eq!(pruning_tables.corners(86892623), 2);
         assert_eq!(pruning_tables.corners(43379278), 3);
-        assert_eq!(pruning_tables.corners(72861452), 4);
+        assert_eq!(pruning_tables.corners(72861452), 3);
         assert_eq!(pruning_tables.corners(44224921), 3);
         assert_eq!(pruning_tables.corners(6033325), 3);
-        assert_eq!(pruning_tables.corners(22610116), 4);
+        assert_eq!(pruning_tables.corners(22610116), 2);
         assert_eq!(pruning_tables.corners(68205743), 3);
-        assert_eq!(pruning_tables.corners(86793893), 3);
+        assert_eq!(pruning_tables.corners(86793893), 2);
         assert_eq!(pruning_tables.corners(76409584), 3);
-        assert_eq!(pruning_tables.corners(27843978), 3);
+        assert_eq!(pruning_tables.corners(27843978), 2);
         assert_eq!(pruning_tables.corners(63141055), 3);
         assert_eq!(pruning_tables.corners(18035622), 3);
         assert_eq!(pruning_tables.corners(65425787), 3);
         assert_eq!(pruning_tables.corners(18267936), 3);
         assert_eq!(pruning_tables.corners(30970404), 2);
-        assert_eq!(pruning_tables.corners(54100422), 4);
+        assert_eq!(pruning_tables.corners(54100422), 3);
         assert_eq!(pruning_tables.corners(29147878), 3);
-        assert_eq!(pruning_tables.corners(74309573), 4);
+        assert_eq!(pruning_tables.corners(74309573), 3);
         assert_eq!(pruning_tables.corners(68082209), 3);
         assert_eq!(pruning_tables.corners(81872954), 3);
-        assert_eq!(pruning_tables.corners(63041830), 4);
-        assert_eq!(pruning_tables.corners(39066690), 4);
+        assert_eq!(pruning_tables.corners(63041830), 3);
+        assert_eq!(pruning_tables.corners(39066690), 2);
         assert_eq!(pruning_tables.corners(62722479), 3);
         assert_eq!(pruning_tables.corners(56020196), 3);
         assert_eq!(pruning_tables.corners(29375797), 2);
-        assert_eq!(pruning_tables.corners(20736154), 4);
-        assert_eq!(pruning_tables.corners(11128003), 3);
-        assert_eq!(pruning_tables.corners(55714081), 3);
-        assert_eq!(pruning_tables.corners(49148395), 4);
-        assert_eq!(pruning_tables.corners(85856101), 4);
+        assert_eq!(pruning_tables.corners(20736154), 3);
+        assert_eq!(pruning_tables.corners(11128003), 2);
+        assert_eq!(pruning_tables.corners(55714081), 2);
+        assert_eq!(pruning_tables.corners(49148395), 3);
+        assert_eq!(pruning_tables.corners(85856101), 3);
         assert_eq!(pruning_tables.corners(24911797), 3);
         assert_eq!(pruning_tables.corners(42240382), 3);
         assert_eq!(pruning_tables.corners(28881648), 3);
         assert_eq!(pruning_tables.corners(665920), 4);
         assert_eq!(pruning_tables.corners(54043375), 2);
-        assert_eq!(pruning_tables.corners(2600690), 3);
+        assert_eq!(pruning_tables.corners(2600690), 2);
         assert_eq!(pruning_tables.corners(3093562), 2);
         assert_eq!(pruning_tables.corners(14432196), 3);
-        assert_eq!(pruning_tables.corners(44561761), 4);
+        assert_eq!(pruning_tables.corners(44561761), 3);
         assert_eq!(pruning_tables.corners(23850765), 1);
         assert_eq!(pruning_tables.corners(52598493), 3);
-        assert_eq!(pruning_tables.corners(23644531), 4);
-        assert_eq!(pruning_tables.corners(36173692), 4);
-        assert_eq!(pruning_tables.corners(82231195), 3);
+        assert_eq!(pruning_tables.corners(23644531), 3);
+        assert_eq!(pruning_tables.corners(36173692), 2);
+        assert_eq!(pruning_tables.corners(82231195), 2);
         assert_eq!(pruning_tables.corners(44286929), 3);
         assert_eq!(pruning_tables.corners(47385443), 3);
-        assert_eq!(pruning_tables.corners(5611098), 4);
+        assert_eq!(pruning_tables.corners(5611098), 3);
         assert_eq!(pruning_tables.corners(7298263), 3);
-        assert_eq!(pruning_tables.corners(80059639), 3);
+        assert_eq!(pruning_tables.corners(80059639), 2);
         assert_eq!(pruning_tables.corners(28876552), 3);
         assert_eq!(pruning_tables.corners(33543142), 3);
-        assert_eq!(pruning_tables.corners(47036730), 4);
-        assert_eq!(pruning_tables.corners(80943069), 3);
+        assert_eq!(pruning_tables.corners(47036730), 3);
+        assert_eq!(pruning_tables.corners(80943069), 2);
         assert_eq!(pruning_tables.corners(55691174), 3);
-        assert_eq!(pruning_tables.corners(32670756), 3);
+        assert_eq!(pruning_tables.corners(32670756), 2);
         assert_eq!(pruning_tables.corners(22169319), 3);
-        assert_eq!(pruning_tables.corners(86353153), 4);
-        assert_eq!(pruning_tables.corners(4338798), 3);
-        assert_eq!(pruning_tables.corners(9583443), 3);
+        assert_eq!(pruning_tables.corners(86353153), 2);
+        assert_eq!(pruning_tables.corners(4338798), 2);
+        assert_eq!(pruning_tables.corners(9583443), 2);
         assert_eq!(pruning_tables.corners(84298514), 3);
         assert_eq!(pruning_tables.corners(42063590), 4);
         assert_eq!(pruning_tables.corners(30062747), 3);
         assert_eq!(pruning_tables.corners(79372797), 3);
         assert_eq!(pruning_tables.corners(60487301), 2);
-        assert_eq!(pruning_tables.corners(66629510), 4);
+        assert_eq!(pruning_tables.corners(66629510), 3);
         assert_eq!(pruning_tables.corners(55756598), 2);
         assert_eq!(pruning_tables.corners(29545310), 3);
-        assert_eq!(pruning_tables.corners(29924171), 3);
+        assert_eq!(pruning_tables.corners(29924171), 2);
         assert_eq!(pruning_tables.corners(31893794), 3);
-        assert_eq!(pruning_tables.corners(596204), 4);
+        assert_eq!(pruning_tables.corners(596204), 3);
         assert_eq!(pruning_tables.corners(78264507), 3);
         assert_eq!(pruning_tables.corners(35270108), 3);
-        assert_eq!(pruning_tables.corners(82366711), 4);
+        assert_eq!(pruning_tables.corners(82366711), 3);
         assert_eq!(pruning_tables.corners(28500699), 3);
         assert_eq!(pruning_tables.corners(57231097), 3);
-        assert_eq!(pruning_tables.corners(17545061), 4);
+        assert_eq!(pruning_tables.corners(17545061), 3);
         assert_eq!(pruning_tables.corners(44637608), 3);
         assert_eq!(pruning_tables.corners(77583978), 3);
         assert_eq!(pruning_tables.corners(83500161), 3);
         assert_eq!(pruning_tables.corners(10745007), 3);
         assert_eq!(pruning_tables.corners(68367924), 1);
-        assert_eq!(pruning_tables.corners(62659363), 3);
+        assert_eq!(pruning_tables.corners(62659363), 2);
         assert_eq!(pruning_tables.corners(76819075), 3);
         assert_eq!(pruning_tables.corners(28487243), 3);
-        assert_eq!(pruning_tables.corners(6936388), 4);
+        assert_eq!(pruning_tables.corners(6936388), 3);
         assert_eq!(pruning_tables.corners(30235608), 2);
         assert_eq!(pruning_tables.corners(39950524), 3);
         assert_eq!(pruning_tables.corners(3321286), 3);
-        assert_eq!(pruning_tables.corners(64853490), 3);
+        assert_eq!(pruning_tables.corners(64853490), 2);
         assert_eq!(pruning_tables.corners(42983385), 2);
-        assert_eq!(pruning_tables.corners(52097908), 2);
+        assert_eq!(pruning_tables.corners(52097908), 1);
         assert_eq!(pruning_tables.corners(83676347), 3);
         assert_eq!(pruning_tables.corners(62800744), 3);
         assert_eq!(pruning_tables.corners(76359396), 3);
         assert_eq!(pruning_tables.corners(20531727), 3);
-        assert_eq!(pruning_tables.corners(17696146), 3);
-        assert_eq!(pruning_tables.corners(32358843), 4);
-        assert_eq!(pruning_tables.corners(74877807), 3);
+        assert_eq!(pruning_tables.corners(17696146), 1);
+        assert_eq!(pruning_tables.corners(32358843), 3);
+        assert_eq!(pruning_tables.corners(74877807), 2);
         assert_eq!(pruning_tables.corners(83314153), 3);
         assert_eq!(pruning_tables.corners(22537519), 3);
         assert_eq!(pruning_tables.corners(59438031), 3);
-        assert_eq!(pruning_tables.corners(75470614), 4);
+        assert_eq!(pruning_tables.corners(75470614), 3);
         assert_eq!(pruning_tables.corners(61954552), 2);
         assert_eq!(pruning_tables.corners(76665934), 3);
         assert_eq!(pruning_tables.corners(13146436), 3);
-        assert_eq!(pruning_tables.corners(59108553), 3);
+        assert_eq!(pruning_tables.corners(59108553), 2);
         assert_eq!(pruning_tables.corners(78198565), 3);
         assert_eq!(pruning_tables.corners(30461790), 3);
         assert_eq!(pruning_tables.corners(22484658), 1);
@@ -315,68 +285,68 @@ mod tests {
         assert_eq!(pruning_tables.corners(38510840), 2);
         assert_eq!(pruning_tables.corners(53147791), 3);
         assert_eq!(pruning_tables.corners(56216607), 3);
-        assert_eq!(pruning_tables.corners(14279333), 3);
+        assert_eq!(pruning_tables.corners(14279333), 2);
         assert_eq!(pruning_tables.corners(67942026), 3);
         assert_eq!(pruning_tables.corners(33185774), 3);
         assert_eq!(pruning_tables.corners(81977956), 2);
         assert_eq!(pruning_tables.corners(85055465), 3);
         assert_eq!(pruning_tables.corners(83889149), 3);
-        assert_eq!(pruning_tables.corners(79017895), 3);
-        assert_eq!(pruning_tables.corners(84990191), 4);
-        assert_eq!(pruning_tables.corners(12334354), 4);
-        assert_eq!(pruning_tables.corners(83646302), 4);
-        assert_eq!(pruning_tables.corners(41686713), 3);
+        assert_eq!(pruning_tables.corners(79017895), 2);
+        assert_eq!(pruning_tables.corners(84990191), 3);
+        assert_eq!(pruning_tables.corners(12334354), 3);
+        assert_eq!(pruning_tables.corners(83646302), 3);
+        assert_eq!(pruning_tables.corners(41686713), 2);
         assert_eq!(pruning_tables.corners(73504902), 3);
         assert_eq!(pruning_tables.corners(62688757), 3);
         assert_eq!(pruning_tables.corners(80069351), 3);
         assert_eq!(pruning_tables.corners(17410743), 3);
-        assert_eq!(pruning_tables.corners(52931835), 4);
+        assert_eq!(pruning_tables.corners(52931835), 2);
         assert_eq!(pruning_tables.corners(5505154), 2);
         assert_eq!(pruning_tables.corners(19871489), 2);
-        assert_eq!(pruning_tables.corners(84002929), 4);
+        assert_eq!(pruning_tables.corners(84002929), 3);
         assert_eq!(pruning_tables.corners(82456117), 3);
         assert_eq!(pruning_tables.corners(64215668), 3);
         assert_eq!(pruning_tables.corners(72905840), 2);
         assert_eq!(pruning_tables.corners(7772881), 3);
         assert_eq!(pruning_tables.corners(63354192), 3);
         assert_eq!(pruning_tables.corners(2790343), 3);
-        assert_eq!(pruning_tables.corners(18596051), 4);
+        assert_eq!(pruning_tables.corners(18596051), 3);
         assert_eq!(pruning_tables.corners(17346618), 2);
-        assert_eq!(pruning_tables.corners(88030411), 4);
+        assert_eq!(pruning_tables.corners(88030411), 3);
         assert_eq!(pruning_tables.corners(63283919), 3);
-        assert_eq!(pruning_tables.corners(58346482), 3);
+        assert_eq!(pruning_tables.corners(58346482), 2);
         assert_eq!(pruning_tables.corners(4499280), 3);
-        assert_eq!(pruning_tables.corners(77474617), 3);
+        assert_eq!(pruning_tables.corners(77474617), 2);
         assert_eq!(pruning_tables.corners(61745738), 3);
         assert_eq!(pruning_tables.corners(33080789), 3);
         assert_eq!(pruning_tables.corners(66448184), 3);
         assert_eq!(pruning_tables.corners(57984584), 3);
-        assert_eq!(pruning_tables.corners(33731059), 3);
+        assert_eq!(pruning_tables.corners(33731059), 2);
         assert_eq!(pruning_tables.corners(60594782), 3);
         assert_eq!(pruning_tables.corners(370247), 3);
         assert_eq!(pruning_tables.corners(71510336), 3);
-        assert_eq!(pruning_tables.corners(26848683), 3);
+        assert_eq!(pruning_tables.corners(26848683), 2);
         assert_eq!(pruning_tables.corners(43786792), 3);
         assert_eq!(pruning_tables.corners(52809705), 2);
         assert_eq!(pruning_tables.corners(12824528), 4);
         assert_eq!(pruning_tables.corners(73631546), 3);
-        assert_eq!(pruning_tables.corners(41785580), 4);
+        assert_eq!(pruning_tables.corners(41785580), 2);
         assert_eq!(pruning_tables.corners(64439946), 3);
         assert_eq!(pruning_tables.corners(33432717), 3);
-        assert_eq!(pruning_tables.corners(70549681), 3);
+        assert_eq!(pruning_tables.corners(70549681), 2);
         assert_eq!(pruning_tables.corners(87455031), 3);
         assert_eq!(pruning_tables.corners(42941232), 3);
         assert_eq!(pruning_tables.corners(2720673), 3);
         assert_eq!(pruning_tables.corners(50647046), 3);
-        assert_eq!(pruning_tables.corners(65485318), 3);
-        assert_eq!(pruning_tables.corners(10689158), 4);
+        assert_eq!(pruning_tables.corners(65485318), 2);
+        assert_eq!(pruning_tables.corners(10689158), 3);
         assert_eq!(pruning_tables.corners(60512166), 3);
-        assert_eq!(pruning_tables.corners(78625589), 3);
+        assert_eq!(pruning_tables.corners(78625589), 1);
         assert_eq!(pruning_tables.corners(53273048), 3);
         assert_eq!(pruning_tables.corners(72499689), 2);
         assert_eq!(pruning_tables.corners(57134890), 2);
         assert_eq!(pruning_tables.corners(85673976), 3);
-        assert_eq!(pruning_tables.corners(51092819), 4);
+        assert_eq!(pruning_tables.corners(51092819), 3);
         assert_eq!(pruning_tables.corners(38707196), 3);
         assert_eq!(pruning_tables.corners(19888479), 3);
         assert_eq!(pruning_tables.corners(24777774), 3);
@@ -384,150 +354,150 @@ mod tests {
         assert_eq!(pruning_tables.corners(86381033), 3);
         assert_eq!(pruning_tables.corners(34817197), 2);
         assert_eq!(pruning_tables.corners(46056677), 3);
-        assert_eq!(pruning_tables.corners(11667001), 3);
+        assert_eq!(pruning_tables.corners(11667001), 2);
         assert_eq!(pruning_tables.corners(7134053), 2);
-        assert_eq!(pruning_tables.corners(20765983), 3);
-        assert_eq!(pruning_tables.corners(50355296), 4);
-        assert_eq!(pruning_tables.corners(27506206), 4);
+        assert_eq!(pruning_tables.corners(20765983), 2);
+        assert_eq!(pruning_tables.corners(50355296), 2);
+        assert_eq!(pruning_tables.corners(27506206), 3);
         assert_eq!(pruning_tables.corners(26992768), 3);
         assert_eq!(pruning_tables.corners(65106138), 3);
         assert_eq!(pruning_tables.corners(6149248), 4);
-        assert_eq!(pruning_tables.corners(8651986), 3);
+        assert_eq!(pruning_tables.corners(8651986), 2);
         assert_eq!(pruning_tables.corners(84099467), 2);
-        assert_eq!(pruning_tables.corners(82120753), 4);
-        assert_eq!(pruning_tables.corners(55004230), 4);
-        assert_eq!(pruning_tables.corners(54462997), 3);
-        assert_eq!(pruning_tables.corners(63372221), 3);
+        assert_eq!(pruning_tables.corners(82120753), 3);
+        assert_eq!(pruning_tables.corners(55004230), 3);
+        assert_eq!(pruning_tables.corners(54462997), 2);
+        assert_eq!(pruning_tables.corners(63372221), 2);
         assert_eq!(pruning_tables.corners(34528383), 3);
         assert_eq!(pruning_tables.corners(82434755), 2);
         assert_eq!(pruning_tables.corners(20854776), 3);
-        assert_eq!(pruning_tables.corners(56140327), 3);
+        assert_eq!(pruning_tables.corners(56140327), 2);
         assert_eq!(pruning_tables.corners(180543), 3);
-        assert_eq!(pruning_tables.corners(48339662), 3);
+        assert_eq!(pruning_tables.corners(48339662), 2);
         assert_eq!(pruning_tables.corners(63559066), 3);
-        assert_eq!(pruning_tables.corners(17445535), 4);
+        assert_eq!(pruning_tables.corners(17445535), 2);
         assert_eq!(pruning_tables.corners(29282390), 3);
         assert_eq!(pruning_tables.corners(32856413), 3);
         assert_eq!(pruning_tables.corners(87042647), 2);
         assert_eq!(pruning_tables.corners(45468028), 3);
-        assert_eq!(pruning_tables.corners(58041081), 4);
-        assert_eq!(pruning_tables.corners(18919769), 3);
+        assert_eq!(pruning_tables.corners(58041081), 2);
+        assert_eq!(pruning_tables.corners(18919769), 2);
         assert_eq!(pruning_tables.corners(48605114), 3);
-        assert_eq!(pruning_tables.corners(86147363), 4);
+        assert_eq!(pruning_tables.corners(86147363), 3);
         assert_eq!(pruning_tables.corners(11687475), 3);
         assert_eq!(pruning_tables.corners(5867404), 3);
         assert_eq!(pruning_tables.corners(13879945), 2);
-        assert_eq!(pruning_tables.corners(68128970), 2);
+        assert_eq!(pruning_tables.corners(68128970), 1);
         assert_eq!(pruning_tables.corners(6818032), 3);
         assert_eq!(pruning_tables.corners(70321625), 3);
         assert_eq!(pruning_tables.corners(75366929), 3);
-        assert_eq!(pruning_tables.corners(72144131), 3);
+        assert_eq!(pruning_tables.corners(72144131), 2);
         assert_eq!(pruning_tables.corners(71702185), 3);
-        assert_eq!(pruning_tables.corners(30454365), 3);
+        assert_eq!(pruning_tables.corners(30454365), 2);
         assert_eq!(pruning_tables.corners(42928341), 3);
         assert_eq!(pruning_tables.corners(64281121), 3);
-        assert_eq!(pruning_tables.corners(2980407), 3);
+        assert_eq!(pruning_tables.corners(2980407), 2);
         assert_eq!(pruning_tables.corners(2286541), 3);
         assert_eq!(pruning_tables.corners(16772836), 3);
         assert_eq!(pruning_tables.corners(23472545), 3);
         assert_eq!(pruning_tables.corners(8841726), 2);
-        assert_eq!(pruning_tables.corners(60016500), 4);
-        assert_eq!(pruning_tables.corners(34417748), 4);
-        assert_eq!(pruning_tables.corners(63716537), 3);
-        assert_eq!(pruning_tables.corners(24967292), 3);
+        assert_eq!(pruning_tables.corners(60016500), 2);
+        assert_eq!(pruning_tables.corners(34417748), 2);
+        assert_eq!(pruning_tables.corners(63716537), 2);
+        assert_eq!(pruning_tables.corners(24967292), 2);
         assert_eq!(pruning_tables.corners(36249454), 3);
-        assert_eq!(pruning_tables.corners(46148475), 3);
-        assert_eq!(pruning_tables.corners(21629791), 4);
-        assert_eq!(pruning_tables.corners(85947920), 4);
+        assert_eq!(pruning_tables.corners(46148475), 2);
+        assert_eq!(pruning_tables.corners(21629791), 3);
+        assert_eq!(pruning_tables.corners(85947920), 3);
         assert_eq!(pruning_tables.corners(82235489), 3);
         assert_eq!(pruning_tables.corners(15530065), 2);
         assert_eq!(pruning_tables.corners(31973256), 2);
         assert_eq!(pruning_tables.corners(32957320), 3);
         assert_eq!(pruning_tables.corners(10052438), 3);
-        assert_eq!(pruning_tables.corners(65094811), 4);
+        assert_eq!(pruning_tables.corners(65094811), 3);
         assert_eq!(pruning_tables.corners(5296972), 3);
-        assert_eq!(pruning_tables.corners(77954225), 4);
+        assert_eq!(pruning_tables.corners(77954225), 3);
         assert_eq!(pruning_tables.corners(8724308), 3);
-        assert_eq!(pruning_tables.corners(31960507), 4);
-        assert_eq!(pruning_tables.corners(30874245), 4);
+        assert_eq!(pruning_tables.corners(31960507), 3);
+        assert_eq!(pruning_tables.corners(30874245), 3);
         assert_eq!(pruning_tables.corners(85282534), 3);
-        assert_eq!(pruning_tables.corners(52472967), 4);
+        assert_eq!(pruning_tables.corners(52472967), 3);
         assert_eq!(pruning_tables.corners(75222820), 3);
         assert_eq!(pruning_tables.corners(58618309), 2);
-        assert_eq!(pruning_tables.corners(27956689), 3);
-        assert_eq!(pruning_tables.corners(51894236), 4);
+        assert_eq!(pruning_tables.corners(27956689), 1);
+        assert_eq!(pruning_tables.corners(51894236), 3);
         assert_eq!(pruning_tables.corners(32560862), 3);
         assert_eq!(pruning_tables.corners(43705682), 2);
         assert_eq!(pruning_tables.corners(67298426), 3);
         assert_eq!(pruning_tables.corners(41291602), 3);
-        assert_eq!(pruning_tables.corners(79232804), 3);
-        assert_eq!(pruning_tables.corners(74186501), 3);
+        assert_eq!(pruning_tables.corners(79232804), 2);
+        assert_eq!(pruning_tables.corners(74186501), 2);
         assert_eq!(pruning_tables.corners(55187940), 3);
-        assert_eq!(pruning_tables.corners(58613267), 3);
-        assert_eq!(pruning_tables.corners(17925592), 4);
+        assert_eq!(pruning_tables.corners(58613267), 2);
+        assert_eq!(pruning_tables.corners(17925592), 3);
         assert_eq!(pruning_tables.corners(41585471), 2);
         assert_eq!(pruning_tables.corners(18467841), 2);
-        assert_eq!(pruning_tables.corners(1590447), 3);
-        assert_eq!(pruning_tables.corners(41575418), 4);
-        assert_eq!(pruning_tables.corners(46966073), 3);
-        assert_eq!(pruning_tables.corners(32393951), 3);
+        assert_eq!(pruning_tables.corners(1590447), 2);
+        assert_eq!(pruning_tables.corners(41575418), 2);
+        assert_eq!(pruning_tables.corners(46966073), 2);
+        assert_eq!(pruning_tables.corners(32393951), 2);
         assert_eq!(pruning_tables.corners(37323507), 1);
-        assert_eq!(pruning_tables.corners(63042204), 3);
-        assert_eq!(pruning_tables.corners(75333846), 4);
+        assert_eq!(pruning_tables.corners(63042204), 2);
+        assert_eq!(pruning_tables.corners(75333846), 3);
         assert_eq!(pruning_tables.corners(77510420), 3);
         assert_eq!(pruning_tables.corners(62935641), 3);
-        assert_eq!(pruning_tables.corners(55759819), 3);
+        assert_eq!(pruning_tables.corners(55759819), 2);
         assert_eq!(pruning_tables.corners(17861717), 3);
         assert_eq!(pruning_tables.corners(37594480), 3);
         assert_eq!(pruning_tables.corners(50020990), 3);
         assert_eq!(pruning_tables.corners(20047501), 3);
         assert_eq!(pruning_tables.corners(35772924), 2);
         assert_eq!(pruning_tables.corners(43509283), 3);
-        assert_eq!(pruning_tables.corners(79401558), 4);
-        assert_eq!(pruning_tables.corners(83601013), 3);
+        assert_eq!(pruning_tables.corners(79401558), 2);
+        assert_eq!(pruning_tables.corners(83601013), 2);
         assert_eq!(pruning_tables.corners(52540495), 2);
-        assert_eq!(pruning_tables.corners(676694), 3);
-        assert_eq!(pruning_tables.corners(31549887), 4);
-        assert_eq!(pruning_tables.corners(43566207), 4);
-        assert_eq!(pruning_tables.corners(76330957), 4);
+        assert_eq!(pruning_tables.corners(676694), 2);
+        assert_eq!(pruning_tables.corners(31549887), 2);
+        assert_eq!(pruning_tables.corners(43566207), 3);
+        assert_eq!(pruning_tables.corners(76330957), 3);
         assert_eq!(pruning_tables.corners(39125852), 2);
-        assert_eq!(pruning_tables.corners(87713513), 4);
-        assert_eq!(pruning_tables.corners(53999930), 3);
-        assert_eq!(pruning_tables.corners(3549702), 4);
+        assert_eq!(pruning_tables.corners(87713513), 3);
+        assert_eq!(pruning_tables.corners(53999930), 2);
+        assert_eq!(pruning_tables.corners(3549702), 2);
         assert_eq!(pruning_tables.corners(71491047), 3);
         assert_eq!(pruning_tables.corners(40376522), 3);
-        assert_eq!(pruning_tables.corners(8639695), 4);
-        assert_eq!(pruning_tables.corners(27442865), 3);
+        assert_eq!(pruning_tables.corners(8639695), 3);
+        assert_eq!(pruning_tables.corners(27442865), 2);
         assert_eq!(pruning_tables.corners(73751), 1);
-        assert_eq!(pruning_tables.corners(13449895), 4);
+        assert_eq!(pruning_tables.corners(13449895), 3);
         assert_eq!(pruning_tables.corners(9425577), 3);
         assert_eq!(pruning_tables.corners(21875729), 3);
         assert_eq!(pruning_tables.corners(21219167), 3);
         assert_eq!(pruning_tables.corners(65454496), 3);
         assert_eq!(pruning_tables.corners(60363623), 3);
-        assert_eq!(pruning_tables.corners(9848721), 3);
-        assert_eq!(pruning_tables.corners(47347512), 4);
-        assert_eq!(pruning_tables.corners(20439589), 3);
+        assert_eq!(pruning_tables.corners(9848721), 2);
+        assert_eq!(pruning_tables.corners(47347512), 3);
+        assert_eq!(pruning_tables.corners(20439589), 2);
         assert_eq!(pruning_tables.corners(71710804), 3);
-        assert_eq!(pruning_tables.corners(78692257), 4);
+        assert_eq!(pruning_tables.corners(78692257), 3);
         assert_eq!(pruning_tables.corners(71424986), 3);
         assert_eq!(pruning_tables.corners(13370653), 3);
         assert_eq!(pruning_tables.corners(72862338), 3);
-        assert_eq!(pruning_tables.corners(64145047), 3);
-        assert_eq!(pruning_tables.corners(33588652), 3);
+        assert_eq!(pruning_tables.corners(64145047), 2);
+        assert_eq!(pruning_tables.corners(33588652), 2);
         assert_eq!(pruning_tables.corners(72427511), 3);
         assert_eq!(pruning_tables.corners(66479731), 2);
         assert_eq!(pruning_tables.corners(58953040), 3);
         assert_eq!(pruning_tables.corners(32471767), 3);
-        assert_eq!(pruning_tables.corners(6535363), 3);
-        assert_eq!(pruning_tables.corners(72295612), 4);
+        assert_eq!(pruning_tables.corners(6535363), 2);
+        assert_eq!(pruning_tables.corners(72295612), 3);
         assert_eq!(pruning_tables.corners(41009952), 3);
-        assert_eq!(pruning_tables.corners(69114541), 4);
+        assert_eq!(pruning_tables.corners(69114541), 2);
         assert_eq!(pruning_tables.corners(1338660), 2);
         assert_eq!(pruning_tables.corners(13753239), 3);
-        assert_eq!(pruning_tables.corners(33197736), 3);
+        assert_eq!(pruning_tables.corners(33197736), 2);
         assert_eq!(pruning_tables.corners(78571626), 3);
-        assert_eq!(pruning_tables.corners(60713644), 4);
+        assert_eq!(pruning_tables.corners(60713644), 3);
         assert_eq!(pruning_tables.corners(9813506), 2);
         assert_eq!(pruning_tables.corners(42354008), 3);
         assert_eq!(pruning_tables.corners(1552166), 1);
@@ -535,14 +505,14 @@ mod tests {
         assert_eq!(pruning_tables.corners(39372034), 3);
         assert_eq!(pruning_tables.corners(32986625), 3);
         assert_eq!(pruning_tables.corners(27181611), 3);
-        assert_eq!(pruning_tables.corners(45913105), 4);
+        assert_eq!(pruning_tables.corners(45913105), 3);
         assert_eq!(pruning_tables.corners(53152634), 3);
-        assert_eq!(pruning_tables.corners(16999463), 3);
-        assert_eq!(pruning_tables.corners(65703191), 4);
-        assert_eq!(pruning_tables.corners(28927232), 4);
-        assert_eq!(pruning_tables.corners(55341963), 4);
+        assert_eq!(pruning_tables.corners(16999463), 2);
+        assert_eq!(pruning_tables.corners(65703191), 3);
+        assert_eq!(pruning_tables.corners(28927232), 3);
+        assert_eq!(pruning_tables.corners(55341963), 3);
         assert_eq!(pruning_tables.corners(46032346), 3);
-        assert_eq!(pruning_tables.corners(14339617), 3);
+        assert_eq!(pruning_tables.corners(14339617), 2);
         assert_eq!(pruning_tables.corners(60168742), 3);
         assert_eq!(pruning_tables.corners(22226520), 2);
         assert_eq!(pruning_tables.corners(40984380), 3);
@@ -551,12 +521,12 @@ mod tests {
         assert_eq!(pruning_tables.corners(55247670), 3);
         assert_eq!(pruning_tables.corners(8254232), 1);
         assert_eq!(pruning_tables.corners(23777103), 1);
-        assert_eq!(pruning_tables.corners(41291689), 4);
-        assert_eq!(pruning_tables.corners(80134683), 2);
-        assert_eq!(pruning_tables.corners(7701319), 3);
-        assert_eq!(pruning_tables.corners(64649226), 3);
-        assert_eq!(pruning_tables.corners(84910805), 4);
-        assert_eq!(pruning_tables.corners(87821065), 4);
+        assert_eq!(pruning_tables.corners(41291689), 3);
+        assert_eq!(pruning_tables.corners(80134683), 0);
+        assert_eq!(pruning_tables.corners(7701319), 2);
+        assert_eq!(pruning_tables.corners(64649226), 2);
+        assert_eq!(pruning_tables.corners(84910805), 3);
+        assert_eq!(pruning_tables.corners(87821065), 3);
         assert_eq!(pruning_tables.corners(68500073), 3);
         assert_eq!(pruning_tables.corners(21204257), 3);
         assert_eq!(pruning_tables.corners(53429892), 3);
@@ -564,121 +534,121 @@ mod tests {
         assert_eq!(pruning_tables.corners(76030574), 2);
         assert_eq!(pruning_tables.corners(36746212), 3);
         assert_eq!(pruning_tables.corners(9084073), 3);
-        assert_eq!(pruning_tables.corners(7852994), 4);
+        assert_eq!(pruning_tables.corners(7852994), 3);
         assert_eq!(pruning_tables.corners(32618526), 3);
-        assert_eq!(pruning_tables.corners(53953908), 4);
+        assert_eq!(pruning_tables.corners(53953908), 3);
         assert_eq!(pruning_tables.corners(15044296), 2);
         assert_eq!(pruning_tables.corners(10385026), 3);
-        assert_eq!(pruning_tables.corners(75063654), 4);
-        assert_eq!(pruning_tables.corners(83845122), 3);
+        assert_eq!(pruning_tables.corners(75063654), 3);
+        assert_eq!(pruning_tables.corners(83845122), 2);
         assert_eq!(pruning_tables.corners(45767138), 3);
         assert_eq!(pruning_tables.corners(33124419), 2);
-        assert_eq!(pruning_tables.corners(54725049), 3);
+        assert_eq!(pruning_tables.corners(54725049), 2);
         assert_eq!(pruning_tables.corners(3041433), 3);
         assert_eq!(pruning_tables.corners(61465644), 2);
         assert_eq!(pruning_tables.corners(73685687), 3);
-        assert_eq!(pruning_tables.corners(38128054), 4);
-        assert_eq!(pruning_tables.corners(9217660), 4);
-        assert_eq!(pruning_tables.corners(35230269), 4);
-        assert_eq!(pruning_tables.corners(57470096), 3);
-        assert_eq!(pruning_tables.corners(31912004), 3);
-        assert_eq!(pruning_tables.corners(84668191), 4);
-        assert_eq!(pruning_tables.corners(36142762), 3);
-        assert_eq!(pruning_tables.corners(70057801), 3);
-        assert_eq!(pruning_tables.corners(13688096), 4);
-        assert_eq!(pruning_tables.corners(86462866), 4);
+        assert_eq!(pruning_tables.corners(38128054), 3);
+        assert_eq!(pruning_tables.corners(9217660), 3);
+        assert_eq!(pruning_tables.corners(35230269), 3);
+        assert_eq!(pruning_tables.corners(57470096), 2);
+        assert_eq!(pruning_tables.corners(31912004), 2);
+        assert_eq!(pruning_tables.corners(84668191), 3);
+        assert_eq!(pruning_tables.corners(36142762), 2);
+        assert_eq!(pruning_tables.corners(70057801), 2);
+        assert_eq!(pruning_tables.corners(13688096), 3);
+        assert_eq!(pruning_tables.corners(86462866), 3);
         assert_eq!(pruning_tables.corners(85841213), 3);
-        assert_eq!(pruning_tables.corners(29470536), 4);
-        assert_eq!(pruning_tables.corners(7726924), 2);
-        assert_eq!(pruning_tables.corners(46586963), 3);
+        assert_eq!(pruning_tables.corners(29470536), 3);
+        assert_eq!(pruning_tables.corners(7726924), 1);
+        assert_eq!(pruning_tables.corners(46586963), 1);
         assert_eq!(pruning_tables.corners(27190076), 3);
         assert_eq!(pruning_tables.corners(43018665), 2);
-        assert_eq!(pruning_tables.corners(55424645), 3);
-        assert_eq!(pruning_tables.corners(74099212), 3);
+        assert_eq!(pruning_tables.corners(55424645), 2);
+        assert_eq!(pruning_tables.corners(74099212), 2);
         assert_eq!(pruning_tables.corners(25635178), 3);
         assert_eq!(pruning_tables.corners(58486097), 3);
-        assert_eq!(pruning_tables.corners(84911823), 3);
+        assert_eq!(pruning_tables.corners(84911823), 2);
         assert_eq!(pruning_tables.corners(65669833), 3);
-        assert_eq!(pruning_tables.corners(23991428), 3);
+        assert_eq!(pruning_tables.corners(23991428), 2);
         assert_eq!(pruning_tables.corners(17418063), 2);
-        assert_eq!(pruning_tables.corners(34123046), 3);
-        assert_eq!(pruning_tables.corners(50890215), 3);
-        assert_eq!(pruning_tables.corners(27364832), 4);
+        assert_eq!(pruning_tables.corners(34123046), 2);
+        assert_eq!(pruning_tables.corners(50890215), 2);
+        assert_eq!(pruning_tables.corners(27364832), 2);
         assert_eq!(pruning_tables.corners(63211656), 3);
         assert_eq!(pruning_tables.corners(41892797), 3);
         assert_eq!(pruning_tables.corners(32243672), 2);
         assert_eq!(pruning_tables.corners(81753858), 3);
-        assert_eq!(pruning_tables.corners(68998268), 4);
+        assert_eq!(pruning_tables.corners(68998268), 3);
         assert_eq!(pruning_tables.corners(47150429), 3);
         assert_eq!(pruning_tables.corners(37827148), 3);
-        assert_eq!(pruning_tables.corners(35121320), 3);
+        assert_eq!(pruning_tables.corners(35121320), 2);
         assert_eq!(pruning_tables.corners(43610625), 3);
         assert_eq!(pruning_tables.corners(57777222), 3);
         assert_eq!(pruning_tables.corners(62611506), 3);
         assert_eq!(pruning_tables.corners(39654423), 2);
         assert_eq!(pruning_tables.corners(42858383), 3);
         assert_eq!(pruning_tables.corners(57878762), 3);
-        assert_eq!(pruning_tables.corners(33654613), 4);
+        assert_eq!(pruning_tables.corners(33654613), 3);
         assert_eq!(pruning_tables.corners(41251327), 3);
         assert_eq!(pruning_tables.corners(51528298), 3);
         assert_eq!(pruning_tables.corners(62056686), 3);
-        assert_eq!(pruning_tables.corners(621230), 2);
+        assert_eq!(pruning_tables.corners(621230), 1);
         assert_eq!(pruning_tables.corners(23041562), 3);
         assert_eq!(pruning_tables.corners(61329351), 3);
         assert_eq!(pruning_tables.corners(4106361), 3);
         assert_eq!(pruning_tables.corners(67985896), 2);
         assert_eq!(pruning_tables.corners(73282876), 3);
         assert_eq!(pruning_tables.corners(2087686), 3);
-        assert_eq!(pruning_tables.corners(65314734), 4);
-        assert_eq!(pruning_tables.corners(44005542), 4);
+        assert_eq!(pruning_tables.corners(65314734), 3);
+        assert_eq!(pruning_tables.corners(44005542), 3);
         assert_eq!(pruning_tables.corners(16750045), 3);
-        assert_eq!(pruning_tables.corners(6413876), 3);
-        assert_eq!(pruning_tables.corners(69000824), 4);
+        assert_eq!(pruning_tables.corners(6413876), 2);
+        assert_eq!(pruning_tables.corners(69000824), 2);
         assert_eq!(pruning_tables.corners(3984958), 3);
-        assert_eq!(pruning_tables.corners(62116105), 4);
+        assert_eq!(pruning_tables.corners(62116105), 3);
         assert_eq!(pruning_tables.corners(19085644), 3);
-        assert_eq!(pruning_tables.corners(21153611), 4);
-        assert_eq!(pruning_tables.corners(37350421), 4);
+        assert_eq!(pruning_tables.corners(21153611), 3);
+        assert_eq!(pruning_tables.corners(37350421), 3);
         assert_eq!(pruning_tables.corners(39163988), 3);
         assert_eq!(pruning_tables.corners(72174664), 3);
         assert_eq!(pruning_tables.corners(57600053), 3);
-        assert_eq!(pruning_tables.corners(18482496), 3);
-        assert_eq!(pruning_tables.corners(87540981), 3);
+        assert_eq!(pruning_tables.corners(18482496), 2);
+        assert_eq!(pruning_tables.corners(87540981), 2);
         assert_eq!(pruning_tables.corners(66107879), 4);
-        assert_eq!(pruning_tables.corners(25103902), 4);
+        assert_eq!(pruning_tables.corners(25103902), 2);
         assert_eq!(pruning_tables.corners(20388591), 2);
         assert_eq!(pruning_tables.corners(25966204), 3);
         assert_eq!(pruning_tables.corners(2670470), 3);
-        assert_eq!(pruning_tables.corners(55446079), 3);
-        assert_eq!(pruning_tables.corners(46033904), 4);
+        assert_eq!(pruning_tables.corners(55446079), 2);
+        assert_eq!(pruning_tables.corners(46033904), 3);
         assert_eq!(pruning_tables.corners(22513012), 3);
         assert_eq!(pruning_tables.corners(83445256), 2);
-        assert_eq!(pruning_tables.corners(13443071), 3);
+        assert_eq!(pruning_tables.corners(13443071), 2);
         assert_eq!(pruning_tables.corners(40433384), 2);
         assert_eq!(pruning_tables.corners(65200679), 2);
-        assert_eq!(pruning_tables.corners(80732829), 3);
+        assert_eq!(pruning_tables.corners(80732829), 2);
         assert_eq!(pruning_tables.corners(59743064), 4);
         assert_eq!(pruning_tables.corners(74176886), 3);
-        assert_eq!(pruning_tables.corners(21715797), 4);
-        assert_eq!(pruning_tables.corners(36668621), 4);
+        assert_eq!(pruning_tables.corners(21715797), 3);
+        assert_eq!(pruning_tables.corners(36668621), 3);
         assert_eq!(pruning_tables.corners(69544368), 3);
-        assert_eq!(pruning_tables.corners(27873692), 3);
+        assert_eq!(pruning_tables.corners(27873692), 2);
         assert_eq!(pruning_tables.corners(35933295), 2);
         assert_eq!(pruning_tables.corners(87777725), 3);
         assert_eq!(pruning_tables.corners(48709317), 3);
         assert_eq!(pruning_tables.corners(71486640), 2);
-        assert_eq!(pruning_tables.corners(60002471), 4);
-        assert_eq!(pruning_tables.corners(53854241), 3);
+        assert_eq!(pruning_tables.corners(60002471), 3);
+        assert_eq!(pruning_tables.corners(53854241), 2);
         assert_eq!(pruning_tables.corners(23236714), 3);
         assert_eq!(pruning_tables.corners(42616623), 2);
-        assert_eq!(pruning_tables.corners(42152099), 3);
+        assert_eq!(pruning_tables.corners(42152099), 2);
         assert_eq!(pruning_tables.corners(61295802), 2);
-        assert_eq!(pruning_tables.corners(81252123), 4);
+        assert_eq!(pruning_tables.corners(81252123), 3);
         assert_eq!(pruning_tables.corners(23339423), 2);
         assert_eq!(pruning_tables.corners(28791043), 3);
         assert_eq!(pruning_tables.corners(70366523), 2);
         assert_eq!(pruning_tables.corners(11844255), 3);
-        assert_eq!(pruning_tables.corners(10062295), 3);
+        assert_eq!(pruning_tables.corners(10062295), 2);
 
         assert_eq!(pruning_tables.corners(48663477), 0);
         assert_eq!(pruning_tables.corners(0), 6);

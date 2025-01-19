@@ -358,6 +358,7 @@ pub fn induces_oriented_partition(
     ori: &[i8],
     // cycle_type: &CycleType<u8>,
     partition: &[(u8, bool)],
+    orientation_count: i8,
     multi_bv: &mut [u8],
 ) -> bool {
     // TODO: get this working for any piece orbit
@@ -381,7 +382,7 @@ pub fn induces_oriented_partition(
             orientation_sum += ori[corner];
         }
 
-        let actual_orients = orientation_sum != 0;
+        let actual_orients = orientation_sum % orientation_count != 0;
         if actual_cycle_length == 1 && !actual_orients {
             continue;
         }
@@ -453,12 +454,24 @@ impl CubeState {
         cycle_type: &CycleType<u8>,
         multi_bv: &mut [u8],
     ) -> bool {
-        induces_oriented_partition(&self.cp, &self.co, &cycle_type.corner_partition, multi_bv)
+        induces_oriented_partition(
+            &self.cp,
+            &self.co,
+            &cycle_type.corner_partition,
+            3,
+            multi_bv,
+        )
     }
 
     pub fn induces_cycle_type(&self, cycle_type: &CycleType<u8>, multi_bv: &mut [u8]) -> bool {
         self.induces_corner_cycle_type(cycle_type, multi_bv)
-            && induces_oriented_partition(&self.ep, &self.eo, &cycle_type.edge_partition, multi_bv)
+            && induces_oriented_partition(
+                &self.ep,
+                &self.eo,
+                &cycle_type.edge_partition,
+                2,
+                multi_bv,
+            )
     }
 }
 
@@ -572,7 +585,20 @@ mod tests {
     }
 
     #[test]
-    fn test_induces_cycle_type_all_orients() {
+    fn test_induces_oriented_partition() {
+        let mut multi_bv = vec![0_u8; EDGES.max(CORNERS)];
+
+        assert!(!induces_oriented_partition(
+            &[0, 1, 2, 3, 8, 5, 6, 9, 4, 7, 10, 11],
+            &[0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0],
+            &[(2, true), (2, true)],
+            2,
+            &mut multi_bv,
+        ));
+    }
+
+    #[test]
+    fn test_induces_corner_cycle_type_all_orients() {
         // we can guarantee the partition length will never be greater than the number of pieces in the orbit
         let mut multi_bv = vec![0_u8; EDGES.max(CORNERS)];
         assert!(induces_corner_cycle_type(
